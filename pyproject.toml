@@ -1,0 +1,11 @@
+[project]
+name = "dmdqn"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "keras>=3.9.2",
+    "traci>=1.22.0",
+    "wandb>=0.19.9",
+]
