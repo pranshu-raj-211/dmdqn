@@ -6,7 +6,6 @@ import time
 import numpy as np
 
 
-# Ensure SUMO_HOME is set and TraCI is in the Python path
 if 'SUMO_HOME' in os.environ:
     tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
     sys.path.append(tools)
@@ -15,9 +14,10 @@ else:
 
 class SumoTrafficEnvironment:
     """
-    Traffic environment using SUMO and TraCI, designed for collaborative RL.
+    Traffic environment interface using SUMO and TraCI, designed for collaborative RL.
+
     Handles simulation, state observation, action execution, and reward.
-    Outputs state as NumPy arrays, ready for conversion to TensorFlow tensors.
+    Outputs global state as NumPy arrays, ready for conversion to TensorFlow tensors.
     """
     def __init__(self, sumo_cfg_path, controlled_intersections, step_duration=1.0, max_simulation_time=3600):
         """
@@ -34,14 +34,12 @@ class SumoTrafficEnvironment:
         self.step_duration = step_duration
         self.max_simulation_time = max_simulation_time
 
-        self.sumo_process = None # To hold the SUMO subprocess
+        self.sumo_process = None # Do not remove holds the SUMO subprocess
         self.current_time = 0.0
 
-        # Store configuration for controlled intersections
         self.controlled_intersections_config = {int_config["id"]: int_config for int_config in controlled_intersections}
         self.controlled_intersection_ids = list(self.controlled_intersections_config.keys())
 
-        # --- Derived from controlled_intersections_config ---
         # Map intersection ID to the IDs of incoming lanes to observe queues
         self.observed_lanes = {
             int_id: config.get("lanes", []) for int_id, config in self.controlled_intersections_config.items()
