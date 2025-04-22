@@ -4,19 +4,16 @@
 
     <input>
         <net-file value="networks/grid_3x3.net.xml"/>
-
         <route-files value="routes/grid_3x3_p05.rou.xml"/>
-
-        </input>
+        <additional-files value="grid_3x3.add.xml"/>
+    </input>
 
     <time>
         <begin value="0"/>
-
-        <end value="3600"/> </time>
+        <end value="3600"/> 
+    </time>
 
     <processing>
         <time-to-teleport value="-1"/>
-
-        </processing>
-
-    </sumoConfiguration>
+    </processing>
+</sumoConfiguration>
