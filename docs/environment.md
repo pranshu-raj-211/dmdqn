@@ -67,3 +67,33 @@ state_vector = [
 Note: Although the neighbor presence vector is there to indicate presence or absence of a neighbor, we will still pad that neighbor's vector with zeros if it is absent. This makes the inputs to the NN standardized, and the former vector makes the network distinguish between absence of the network and zero queue length.
 
 Reward comes from SUMO's api. Reward distribution is done before state update for the nn inputs, as we're padding absent states, which could cause issues if not done in order. 
+
+
+### Naming conventions in network
+
+This section outlines the naming conventions used for nodes (junctions/dead ends) and edges in the network file. Consistent naming helps in identifying network elements based on their location and connectivity, simplifying analysis and control logic.
+
+1. **Intersection (Junction) IDs:**
+    Indicates a node where multiple edges connect.
+
+    - Format: J_x_y
+    - x: Column index (0-based, left-to-right).
+    - y: Row index (0-based, top-to-bottom).
+    - Example: J_1_2, J_0_0.
+
+
+
+2. **Corner Junction (Dead End) IDs:**
+    Indicates a terminal node at the grid boundary.
+
+    - Format: End_Direction_x_y
+    - Direction: N, S, E, or W, indicating the boundary side.
+    - x, y: Coordinates of the nearest J_x_y intersection.
+    - Example: End_N_0_0 (north boundary near J_0_0), End_E_2_1 (east boundary near J_2_1).
+
+
+3. **Edge (Road Segment) IDs:**
+    Connects two adjacent nodes (either J_x_y or End_D_x_y). The ID represents the direction of travel.
+
+    - Format: FromNodeID_to_ToNodeID
+    - Example: J_0_0_to_J_0_1 (southbound edge from J_0_0 to J_0_1), J_2_2_to_End_S_2_2 (southbound edge from J_2_2 to the south boundary).
