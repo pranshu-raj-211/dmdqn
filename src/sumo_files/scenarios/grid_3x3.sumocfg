@@ -3,9 +3,8 @@
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
-        <net-file value="networks/grid_3x3.net.xml"/>
-        <route-files value="routes/grid_3x3_p05.rou.xml"/>
-        <additional-files value="grid_3x3.add.xml"/>
+        <net-file value="grid_3x3.net.xml"/>
+        <route-files value="grid_3x3_p05.rou.xml"/>
     </input>
 
     <time>

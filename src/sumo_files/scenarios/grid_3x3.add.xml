@@ -1,5 +1,5 @@
 <additional>
-<tlLogic id="J_0_0" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_0_0" type="actuated" programID="0" offset="0">
         <phase duration="25" state="GGGGrgGrrrrrGGGGrgGrrrrr" minDur="5" maxDur="50"/> 
         <phase duration="4" state="GyyyryGrryrrGyyyryGrryrr"/> 
         <phase duration="2" state="rrrrrrrrrrrrrrrrrrrrrrrr"/> 
