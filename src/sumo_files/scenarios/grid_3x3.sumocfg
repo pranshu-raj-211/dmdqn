@@ -4,7 +4,7 @@
 
     <input>
         <net-file value="grid_3x3.net.xml"/>
-        <route-files value="grid_3x3_p05.rou.xml"/>
+        <route-files value="grid_3x3_p06.rou.xml"/>
     </input>
 
     <time>
