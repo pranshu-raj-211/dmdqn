@@ -14,49 +14,305 @@ enable buffer replay to learn from experience, use epsilon greedy methods to sel
 updates to the target network and other utilities like model saving and loading.
 """
 
-
-class Agent:
-    def __init__(self, agent_id:int, config:dict):
-        self.agent_id:int = agent_id
-        self.input_size:tuple = config.get('input_size')
-        self.action_size:tuple = config.get('action_size')
-        self.replay_buffer:list = []
-
-
-    def _build_online_network(self):
-        pass
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.layers import Dense, Input, Concatenate
+from collections import deque
+import random
 
 
-    def _build_target_network(self):
-        pass
+class ReplayBuffer:
+    def __init__(self, buffer_size:int):
+        self.buffer = deque(maxlen=buffer_size)
+
+    def add(self, experience):
+        """Adds an experience tuple (s, a, r, s', d) to the replay buffer."""
+        self.buffer.append(experience)
+
+    def sample(self, batch_size):
+        """Samples a random mini-batch of experiences from the buffer."""
+        if len(self.buffer) < batch_size:
+            return None # Not enough samples yet
+        batch = random.sample(self.buffer, batch_size)
+        # Unpack batch into separate arrays/lists
+        states, actions, rewards, next_states, dones = zip(*batch)
+
+        states = np.array(states)
+        actions = np.array(actions)
+        rewards = np.array(rewards)
+        next_states = np.array(next_states)
+        dones = np.array(dones, dtype=np.float32) # Use float for multiplication with gamma
+
+        return states, actions, rewards, next_states, dones
+
+    def __len__(self):
+        """Returns the current size of the buffer."""
+        return len(self.buffer)
 
 
-    def _create_optimizer(self):
-        pass
+class DQNAgent:
+    """
+    Deep Q-Learning Agent for traffic signal control at a single intersection.
+    """
+    def __init__(self, state_size:int, action_size:int, agent_id:str, config:dict):
+        """
+        Initializes the DQN Agent.
+
+        Args:
+            state_size (int): Dimension of the input state vector (e.g., 74).
+            action_size (int): Number of possible discrete actions (4).
+            agent_id (str): Unique identifier for this agent (junction ID).
+            config (dict): Dictionary of agent hyperparameters.
+        """
+        self.agent_id = agent_id
+        self.state_size = state_size
+        self.action_size = action_size
+
+        # Hyperparameters
+        self.learning_rate = config.get("learning_rate", 0.001)
+        self.gamma = config.get("gamma", 0.99)
+        self.epsilon = config.get("epsilon_start", 1.0)
+        self.epsilon_min = config.get("epsilon_min", 0.01)
+        self.epsilon_decay_steps = config.get("epsilon_decay_steps", 100000)
+        self.epsilon_decay_rate = (self.epsilon - self.epsilon_min) / self.epsilon_decay_steps if self.epsilon_decay_steps > 0 else 0 # Linear decay
+        self.buffer_size = config.get("replay_buffer_size", 10000)
+        self.batch_size = config.get("batch_size", 32)
+        self.target_update_frequency = config.get("target_update_frequency", 1000) # number of learning steps
+        self.nn_layers = config.get("nn_layers", [128, 128]) # hidden layer sizes
+
+        self.online_network = self.build_simple_q_network(self.state_size, self.action_size, self.nn_layers)
+        self.target_network = self.build_simple_q_network(self.state_size, self.action_size, self.nn_layers)
+        self.target_network.set_weights(self.online_network.get_weights()) # Start with same weights
+
+        # Optimizer and Loss
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
+        self.loss_fn = tf.keras.losses.MeanSquaredError()
+
+        # Replay Buffer
+        self.replay_buffer = ReplayBuffer(self.buffer_size)
+
+        # Counters
+        self.global_step_count = 0 # Total environment steps across all episodes for this agent
+        self.learn_step_counter = 0 # Number of times learn() has been called
 
 
-    def _create_loss_fn(self):
-        pass
+    def build_simple_q_network(self, input_shape, output_shape, hidden_layers):
+        """
+        Simple feed-forward Q-Network architecture.
+
+        Input: Flattened state vector.
+        Output: Q-values for each action.
+        """
+        model = keras.Sequential([
+            Input(shape=(input_shape,)),
+        ])
+        for layer_size in hidden_layers:
+            model.add(Dense(layer_size, activation='relu'))
+
+        model.add(Dense(output_shape, activation='linear')) # Linear activation - raw probs
+        # No compile needed here, compilation happens when defining the training step
+        return model
 
 
-    def select_action(self, state):
-        """Epsilon greedy explore-exploit tradeoff."""
-        pass
+    # * IMPORTANT: experimental, do not use
+    def build_branching_q_network(self, state_size, action_size, hidden_layers):
+        """
+        Q-Network with separate branches for different parts of the state input.
+        Assumes state vector structure: [local_queues(12), local_signal(2), presence(4), neighbor_N(14), E(14), S(14), W(14)]
+        """
+        # Define input layers for different parts of the state
+        local_queues_input = Input(shape=(12,), name='local_queues_input')
+        local_signal_input = Input(shape=(2,), name='local_signal_input')
+        presence_input = Input(shape=(4,), name='presence_input')
+        neighbor_n_input = Input(shape=(14,), name='neighbor_n_input')
+        neighbor_e_input = Input(shape=(14,), name='neighbor_e_input')
+        neighbor_s_input = Input(shape=(14,), name='neighbor_s_input')
+        neighbor_w_input = Input(shape=(14,), name='neighbor_w_input')
+
+        # Process each input branch
+        local_queues_branch = Dense(16, activation='relu')(local_queues_input)
+        local_signal_branch = Dense(8, activation='relu')(local_signal_input)
+        presence_branch = Dense(8, activation='relu')(presence_input)
+        neighbor_n_branch = Dense(16, activation='relu')(neighbor_n_input)
+        neighbor_e_branch = Dense(16, activation='relu')(neighbor_e_input)
+        neighbor_s_branch = Dense(16, activation='relu')(neighbor_s_input)
+        neighbor_w_branch = Dense(16, activation='relu')(neighbor_w_input)
 
 
-    def store_experience(self, state, action, reward, next_state, done:bool):
-        pass
+        # Concatenate the outputs of the branches
+        concatenated = Concatenate()([
+            local_queues_branch,
+            local_signal_branch,
+            presence_branch,
+            neighbor_n_branch,
+            neighbor_e_branch,
+            neighbor_s_branch,
+            neighbor_w_branch
+        ])
+
+        # Add shared hidden layers after concatenation
+        x = concatenated
+        for layer_size in hidden_layers:
+            x = Dense(layer_size, activation='relu')(x)
+
+        # Output layer for Q-values
+        output_layer = Dense(action_size, activation='linear', name='q_values_output')(x)
+
+        # Create the Keras Functional Model
+        model = tf.keras.Model(
+            inputs=[
+                local_queues_input,
+                local_signal_input,
+                presence_input,
+                neighbor_n_input,
+                neighbor_e_input,
+                neighbor_s_input,
+                neighbor_w_input
+            ],
+            outputs=output_layer
+        )
+        # No compile needed here
+        return model
 
 
+    def select_action(self, state_tensor):
+        """
+        Selects an action using the epsilon-greedy policy.
+
+        Args:
+            state_tensor (tf.Tensor): The current state observation as a TensorFlow tensor
+                                     with a batch dimension (shape [1, state_size]).
+
+        Returns:
+            int: The chosen action index (0-3).
+        """
+        # Decay epsilon (linear decay)
+        if self.epsilon > self.epsilon_min:
+             self.epsilon -= self.epsilon_decay_rate
+
+        if np.random.rand() < self.epsilon:
+            # Explore: Choose a random action
+            return np.random.randint(0, self.action_size)
+        else:
+            # Exploit: Choose the action with the highest predicted Q-value
+            q_values_tensor = self.online_network(state_tensor) # Shape [1, 4]
+            # If using the branching network, need to split input tensor first
+            # q_values_tensor = self.online_network(self._split_state_tensor(state_tensor))
+
+            # Get the action with the highest Q-value
+            action_index = tf.argmax(q_values_tensor, axis=1).numpy()[0]
+            return action_index
+
+    def _split_state_tensor(self, state_tensor):
+        """Helper to split the concatenated state tensor for the branching network."""
+        # Assumes state_tensor shape is [batch_size, 74]
+        # Need to slice the tensor according to the state vector structure
+        # [local_queues(12), local_signal(2), presence(4), neighbor_N(14), E(14), S(14), W(14)]
+        start = 0
+        local_queues = state_tensor[:, start : start + 12]
+        start += 12
+        local_signal = state_tensor[:, start : start + 2]
+        start += 2
+        presence = state_tensor[:, start : start + 4]
+        start += 4
+        neighbor_n = state_tensor[:, start : start + 14]
+        start += 14
+        neighbor_e = state_tensor[:, start : start + 14]
+        start += 14
+        neighbor_s = state_tensor[:, start : start + 14]
+        start += 14
+        neighbor_w = state_tensor[:, start : start + 14]
+
+        return [local_queues, local_signal, presence, neighbor_n, neighbor_e, neighbor_s, neighbor_w]
+
+
+    def store_experience(self, experience):
+        """Stores an experience tuple (s, a, r, s', d) in the replay buffer."""
+        # Experience is expected as (NumPy array, int, float, NumPy array, bool)
+        self.replay_buffer.add(experience)
+        self.global_step_count += 1 # Increment global step counter here
+
+    # Use tf.function for performance if your learn step is complex
+    # @tf.function
     def learn(self):
-        pass
+        """
+        Performs a learning update step using a batch of experiences from the replay buffer.
+        """
+        # Only learn if enough experiences are in the buffer
+        if len(self.replay_buffer) < self.batch_size:
+            return # Not enough data yet
+
+        states_np, actions_np, rewards_np, next_states_np, dones_np = self.replay_buffer.sample(self.batch_size)
+
+        states_tf = tf.convert_to_tensor(states_np, dtype=tf.float32)
+        actions_tf = tf.convert_to_tensor(actions_np, dtype=tf.int32)
+        rewards_tf = tf.convert_to_tensor(rewards_np, dtype=tf.float32)
+        next_states_tf = tf.convert_to_tensor(next_states_np, dtype=tf.float32)
+        dones_tf = tf.convert_to_tensor(dones_np, dtype=tf.float32)
+
+        # Get max predicted Q-value for the next states from the target network
+        max_next_q = tf.reduce_max(self.target_network(next_states_tf), axis=1)
+        # If using the branching network:
+        # max_next_q = tf.reduce_max(self.target_network(self._split_state_tensor(next_states_tf)), axis=1)
+
+        # Calculate the target Q value using the Bellman equation
+        # Target Q = R + gamma * max_Q(s', a') * (1 - done)
+        target_q_values = rewards_tf + self.gamma * max_next_q * (1 - dones_tf)
+
+        # Use GradientTape to record operations for automatic differentiation
+        with tf.GradientTape() as tape:
+            # Get predicted Q-values for the current states from the online network
+            # If using the simple network:
+            all_predicted_q = self.online_network(states_tf) # Shape [batch_size, 4]
+            # If using the branching network:
+            # all_predicted_q = self.online_network(self._split_state_tensor(states_tf))
+
+            # Select the predicted Q-values ONLY for the actions that were actually taken
+            # Use tf.gather or tf.one_hot and tf.reduce_sum
+            # Example using tf.gather:
+            indices = tf.stack([tf.range(self.batch_size), actions_tf], axis=1) # Indices [ [0, a0], [1, a1], ... ]
+            predicted_q_for_taken_actions = tf.gather_nd(all_predicted_q, indices)
+            loss = self.loss_fn(target_q_values, predicted_q_for_taken_actions)
+
+        gradients = tape.gradient(loss, self.online_network.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.online_network.trainable_variables))
+        self.learn_step_counter += 1
+
+        # Update target network weights
+        if self.learn_step_counter % self.target_update_frequency == 0:
+            self.update_target_network()
+
+        return loss
+
 
     def update_target_network(self):
-        pass
+        """Copies weights from the online network to the target network."""
+        self.target_network.set_weights(self.online_network.get_weights())
+        print(f"Agent {self.agent_id}: Target network updated at learn step {self.learn_step_counter}")
 
-    def save_model(self, filepath:str):
-        pass
+
+    def save_model(self, filepath):
+        """Saves the weights of the online network."""
+        try:
+            self.online_network.save_weights(filepath)
+            print(f"Agent {self.agent_id}: Model weights saved to {filepath}")
+        except Exception as e:
+            print(f"Agent {self.agent_id}: Error saving model weights to {filepath}: {e}")
 
 
-    def load_model(self, filepath:str):
-        pass
+    def load_model(self, filepath):
+        """Loads weights into the online network (and target network)."""
+        try:
+            self.online_network.load_weights(filepath)
+            self.target_network.set_weights(self.online_network.get_weights()) # Also update target
+            print(f"Agent {self.agent_id}: Model weights loaded from {filepath}")
+            return True
+        except Exception as e:
+            print(f"Agent {self.agent_id}: Error loading model weights from {filepath}: {e}")
+            return False
+
+    def get_epsilon(self):
+        """Returns the current epsilon value."""
+        return self.epsilon
+
