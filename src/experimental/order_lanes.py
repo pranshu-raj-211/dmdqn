@@ -202,7 +202,7 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
         max_retries = 15  # Increased retries slightly
         while retry_count < max_retries:
             try:
-                print(f'Trying to connect to traci: {retry_count} tried')
+                print(f"Trying to connect to traci: {retry_count} tried")
                 traci.init(port=port)
                 print("TraCI connection successful.")
                 break  # Exit retry loop on success
@@ -215,10 +215,10 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
                     print("\n--- SUMO Process Died During Connection Attempt ---")
                     stdout, stderr = sumo_process.communicate()
                     print(f"SUMO process exited with code {sumo_process.returncode}")
-                    if stdout: 
-                        print("SUMO STDOUT:\n", stdout.decode(errors='ignore'))
-                    if stderr: 
-                        print("SUMO STDERR:\n", stderr.decode(errors='ignore'))
+                    if stdout:
+                        print("SUMO STDOUT:\n", stdout.decode(errors="ignore"))
+                    if stderr:
+                        print("SUMO STDERR:\n", stderr.decode(errors="ignore"))
                     print("---------------------------------------------------")
                 time.sleep(1)
             except Exception as e:
@@ -230,10 +230,10 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
                     print("\n--- SUMO Process Died During Connection Attempt ---")
                     stdout, stderr = sumo_process.communicate()
                     print(f"SUMO process exited with code {sumo_process.returncode}")
-                    if stdout: 
-                        print("SUMO STDOUT:\n", stdout.decode(errors='ignore'))
-                    if stderr: 
-                        print("SUMO STDERR:\n", stderr.decode(errors='ignore'))
+                    if stdout:
+                        print("SUMO STDOUT:\n", stdout.decode(errors="ignore"))
+                    if stderr:
+                        print("SUMO STDERR:\n", stderr.decode(errors="ignore"))
                     print("---------------------------------------------------")
                     sys.exit(1)
                     sumo_process.terminate()
@@ -319,7 +319,36 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
         sys.exit(1)
 
 
+def close_sumo():
+    if traci.isconnected():
+        try:
+            traci.close()
+        except traci.exceptions.FatalTraCIError:
+            pass
+        except Exception as e:
+            print(f"Error closing TraCI connection: {e}")
+    # TODO: how to terminate the sumo process? do this to hard reset sumo after each episode
+
+
+def reset_sumo(sumo_seed='42', use_gui=False):
+    close_sumo()
+    time.sleep(1)
+    process = start_sumo(use_gui=use_gui, sumo_seed=sumo_seed)
+
+    current_time = 0.0
+    global_state = dict()
+    for junction in tl_junctions:
+        global_state[junction] = get_own_state(
+            junction_id=junction,
+            structured_junction_lane_map=ordered_junction_lane_map,
+            max_lanes_per_direction=3,
+            current_sim_time=sim_time,
+        )
+    return process, current_time, global_state
+
+
 def _parse_junction_id(junction_id_str: str) -> tuple[int, int] | None:
+    """Returns row and column - coordinates in matrix of the current junction."""
     if not junction_id_str or not junction_id_str.startswith("J_"):
         return None
     parts = junction_id_str.split("_")
@@ -334,16 +363,26 @@ def _parse_junction_id(junction_id_str: str) -> tuple[int, int] | None:
 
 
 def get_lane_index(lane_id_str: str) -> int:
+    """Which part of edge the current lane is.
+
+    0: Right
+    1: Middle
+    2: Left
+
+    Used for ordering, right to left."""
     try:
-        parts = lane_id_str.rsplit('_', 1)
+        parts = lane_id_str.rsplit("_", 1)
         if len(parts) > 1:
-             return int(parts[-1])
+            return int(parts[-1])
         return 0
     except (ValueError, IndexError):
         return 0
-    
 
-def _get_neighbor_info(current_junction_id: str, tl_junctions: list[str]) -> tuple[list[int], list[str | None]]:
+
+def _get_neighbor_info(
+    current_junction_id: str, tl_junctions: list[str]
+) -> tuple[list[int], list[str | None]]:
+    """Returns a vector detailing presence of neighbors, list of their ids if present."""
     presence_vector = [0] * 4
     neighbor_id_list = [None] * 4
 
@@ -356,38 +395,42 @@ def _get_neighbor_info(current_junction_id: str, tl_junctions: list[str]) -> tup
     neighbor_indices_in_vector = {"n": 0, "s": 1, "e": 2, "w": 3}
 
     current_coords = _parse_junction_id(current_junction_id)
+    # junction must be a valid traffic light junction
     if current_coords is None:
-         return presence_vector, neighbor_id_list
+        return presence_vector, neighbor_id_list
 
     current_row, current_col = current_coords
 
+    # find actual neighbor if exists
     for direction_str in ["n", "s", "e", "w"]:
-         delta = neighbor_deltas[direction_str]
-         neighbor_vec_index = neighbor_indices_in_vector[direction_str]
+        delta = neighbor_deltas[direction_str]
+        neighbor_vec_index = neighbor_indices_in_vector[direction_str]
 
-         neighbor_row = current_row + delta[0]
-         neighbor_col = current_col + delta[1]
-         potential_neighbor_id = f"J_{neighbor_row}_{neighbor_col}"
+        neighbor_row = current_row + delta[0]
+        neighbor_col = current_col + delta[1]
+        potential_neighbor_id = f"J_{neighbor_row}_{neighbor_col}"
 
-         if potential_neighbor_id in tl_junctions:
-             presence_vector[neighbor_vec_index] = 1
-             neighbor_id_list[neighbor_vec_index] = potential_neighbor_id
+        if potential_neighbor_id in tl_junctions:
+            presence_vector[neighbor_vec_index] = 1
+            neighbor_id_list[neighbor_vec_index] = potential_neighbor_id
 
     return presence_vector, neighbor_id_list
+
 
 def get_own_state(
     junction_id: str,
     structured_junction_lane_map: dict[str, list[list[str]]],
     max_lanes_per_direction: int,
-    current_sim_time: float
+    current_sim_time: float,
 ) -> list[float]:
+    """Get state of a single junction."""
     block_size = (4 * max_lanes_per_direction) + 2
     queue_block_size = 4 * max_lanes_per_direction
 
     state_block = [-1.0] * block_size
 
     if junction_id not in structured_junction_lane_map:
-         return state_block
+        return state_block
 
     directional_lists = structured_junction_lane_map[junction_id]
 
@@ -395,18 +438,19 @@ def get_own_state(
         lanes_list = directional_lists[dir_list_index]
 
         for lane_idx_in_list in range(len(lanes_list)):
-             lane_id = lanes_list[lane_idx_in_list]
+            lane_id = lanes_list[lane_idx_in_list]
 
-             flat_index = (dir_list_index * max_lanes_per_direction) + lane_idx_in_list
+            flat_index = (dir_list_index * max_lanes_per_direction) + lane_idx_in_list
 
-             if flat_index < queue_block_size:
-                 try:
-                     queue_value = traci.lane.getLastStepHaltingNumber(lane_id)
-                     state_block[flat_index] = float(queue_value)
-                 except traci.exceptions.TraCIException:
-                     pass
-                 except Exception:
-                     pass
+            # add queue size for each lane to local state
+            if flat_index < queue_block_size:
+                try:
+                    queue_value = traci.lane.getLastStepHaltingNumber(lane_id)
+                    state_block[flat_index] = float(queue_value)
+                except traci.exceptions.TraCIException:
+                    pass
+                except Exception:
+                    pass
 
     phase = -1.0
     time_spent = -1.0
@@ -418,14 +462,20 @@ def get_own_state(
 
             try:
                 next_switch_time = traci.trafficlight.getNextSwitch(junction_id)
-                current_phase_duration = traci.trafficlight.getPhaseDuration(junction_id)
-                time_spent_calc = current_phase_duration - (next_switch_time - current_sim_time)
+                current_phase_duration = traci.trafficlight.getPhaseDuration(
+                    junction_id
+                )
+                time_spent_calc = current_phase_duration - (
+                    next_switch_time - current_sim_time
+                )
+                assert time_spent_calc >= 0, "Time spent cannot be negative"
                 time_spent = max(0.0, time_spent_calc)
             except traci.exceptions.TraCIException:
-                 pass
+                pass
             except Exception:
                 pass
 
+    # !exceptions should not be allowed to pass silently
     except traci.exceptions.TraCIException:
         pass
     except Exception:
@@ -442,19 +492,29 @@ def build_state_vector(
     tl_junctions: list[str],
     structured_junction_lane_map: dict[str, list[list[str]]],
     max_lanes_per_direction: int,
-    current_sim_time: float
+    current_sim_time: float,
+    global_state: dict[str, list[float]],
 ) -> list[float]:
+    """Build the observation for the agent at any particular junction.
+
+    This includes local state, neighbor presence vector, neighbor local states.
+    """
     block_size = (4 * max_lanes_per_direction) + 2
     padding_block = [-1.0] * block_size
 
-    if junction_id not in tl_junctions or junction_id not in structured_junction_lane_map or _parse_junction_id(junction_id) is None:
-         return [-1.0] * (block_size + 4 + (4 * block_size))
+    # junction validity check
+    if (
+        junction_id not in tl_junctions
+        or junction_id not in structured_junction_lane_map
+        or _parse_junction_id(junction_id) is None
+    ):
+        return [-1.0] * (block_size + 4 + (4 * block_size))
 
     own_state = get_own_state(
         junction_id,
         structured_junction_lane_map,
         max_lanes_per_direction,
-        current_sim_time
+        current_sim_time,
     )
     state_vector = own_state[:]
 
@@ -463,20 +523,13 @@ def build_state_vector(
     state_vector.extend([float(p) for p in presence_vector])
 
     for neighbor_id in neighbor_id_list:
-        if neighbor_id is not None and neighbor_id in structured_junction_lane_map:
-            nbr_state = get_own_state(
-                neighbor_id,
-                structured_junction_lane_map,
-                max_lanes_per_direction,
-                current_sim_time
-            )
+        if neighbor_id is not None and neighbor_id in global_state:
+            nbr_state = global_state[neighbor_id]
         else:
             nbr_state = padding_block
-
         state_vector.extend(nbr_state)
 
     return state_vector
-
 
 
 def order_lanes_in_edge(junction_lane_map: dict[str, list[list[str]]]):
@@ -504,7 +557,7 @@ def get_full_junction_state(
     junction_id: str,
     tl_junctions: list[str],
     structured_junction_lane_map: dict[str, list[list[str]]],
-    max_lanes_per_direction: int
+    max_lanes_per_direction: int,
 ) -> list[float]:
     """
     Gets the full state vector for a given junction, including its state
@@ -543,7 +596,8 @@ def get_full_junction_state(
         tl_junctions,
         structured_junction_lane_map,
         max_lanes_per_direction,
-        current_sim_time
+        current_sim_time,
+        global_state,
     )
 
     return state_vector
@@ -562,9 +616,30 @@ if __name__ == "__main__":
 
     sim_time = traci.simulation.getTime()
 
-    state = build_state_vector("J_0_0", tl_junctions, ordered_junction_lane_map, 3, sim_time)
+    global_state = dict()
+    for junction in tl_junctions:
+        global_state[junction] = get_own_state(
+            junction_id=junction,
+            structured_junction_lane_map=ordered_junction_lane_map,
+            max_lanes_per_direction=3,
+            current_sim_time=sim_time,
+        )
+
+    state = build_state_vector(
+        junction_id="J_0_0",
+        tl_junctions=tl_junctions,
+        structured_junction_lane_map=ordered_junction_lane_map,
+        max_lanes_per_direction=3,
+        current_sim_time=sim_time,
+        global_state=global_state,
+    )
     print(state)
-    state = build_state_vector("J_1_1", tl_junctions, ordered_junction_lane_map, 3, sim_time)
-    print(state)
-    state = build_state_vector("J_2_1", tl_junctions, ordered_junction_lane_map, 3, sim_time)
+    state = build_state_vector(
+        junction_id="J_1_1",
+        tl_junctions=tl_junctions,
+        structured_junction_lane_map=ordered_junction_lane_map,
+        max_lanes_per_direction=3,
+        current_sim_time=sim_time,
+        global_state=global_state,
+    )
     print(state)

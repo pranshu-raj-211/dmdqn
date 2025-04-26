@@ -41,6 +41,7 @@ from src.experimental.order_lanes import (
     build_junction_lane_mapping,
     order_lanes_in_edge,
     get_own_state,
+    build_state_vector,
 )
 
 AGENT_CONFIG_PATH = ""
@@ -95,8 +96,26 @@ def initialize_environment():
 # Create agents for each junction
 def create_agents(tl_junctions):
     agents = {}
+    # Example configuration for agents
+    agent_config = {
+        "learning_rate": 0.001,
+        "gamma": 0.99,
+        "epsilon_start": 1.0,
+        "epsilon_min": 0.01,
+        "epsilon_decay_steps": 100000,
+        "replay_buffer_size": 10000,
+        "batch_size": 32,
+        "target_update_frequency": 1000,
+        "nn_layers": [128, 128],
+    }
+
     for junction_id in tl_junctions:
-        agents[junction_id] = DQNAgent(state_size=74, action_size=2)  # Example sizes
+        agents[junction_id] = DQNAgent(
+            state_size=74,  # Example state size
+            action_size=2,  # Example action size
+            agent_id=junction_id,
+            config=agent_config
+        )
     return agents
 
 
@@ -112,6 +131,7 @@ run = wandb.init(
     },
     settings=wandb.Settings(init_timeout=300),
 )
+print("logged into wandb")
 
 
 # Training loop
@@ -127,11 +147,13 @@ def train_agents():
 
         # Initialize global state
         for junction in tl_junctions:
-            global_state[junction] = get_own_state(
+            global_state[junction] = build_state_vector(
                 junction_id=junction,
+                tl_junctions=tl_junctions,
                 structured_junction_lane_map=ordered_junction_lane_map,
                 max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
                 current_sim_time=current_time,
+                global_state=global_state,
             )
 
         done = False
@@ -140,7 +162,9 @@ def train_agents():
             actions = {}
             for junction_id, agent in agents.items():
                 state = global_state[junction_id]
-                actions[junction_id] = agent.act(state)
+                # Convert state to TensorFlow tensor before selecting action
+                state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
+                actions[junction_id] = agent.select_action(state_tensor)
 
             # Apply actions and step simulation
             for junction_id, action in actions.items():
