@@ -133,99 +133,6 @@ def get_traffic_light_junction_ids_and_net_sumolib(net_file_path):
     return traffic_light_ids, net
 
 
-def get_ordered_incoming_lanes_by_junction(
-    traffic_light_junction_ids: list, lane_ids: list
-):
-    """
-    Generates a dictionary mapping each traffic light junction ID to a list of its
-    incoming network lane IDs, ordered first by approach direction (NSEW, inferred
-    from ID) and then by lane index (0, 1, 2...).
-
-    Args:
-        traffic_light_junction_ids (list): A list of IDs of traffic light junctions.
-
-    Returns:
-        dict: A dictionary {junction_id: [ordered_incoming_lane_ids]}.
-              Returns an empty list for a junction if no incoming network edges/lanes are found.
-    """
-    junction_lane_map = {}
-
-    print("\n--- Ordering Incoming Lanes by Junction (NSEW + Lane Index, ID Based) ---")
-
-    for junction_id in traffic_light_junction_ids:
-        try:
-            mixed_incoming_ids = traci.junction.getIncomingEdges(junction_id)
-
-            # Filter the list to keep only the actual network edge IDs
-            # Network edge IDs typically do not start with a colon ':'
-            incoming_network_edge_ids = [
-                id for id in mixed_incoming_ids if not id.startswith(":")
-            ]
-
-            # List to store lane IDs for this junction, with sorting information
-            lanes_with_sorting_info = []
-
-            if incoming_network_edge_ids:
-                # Create a list of tuples (direction, edge_id) for sorting edges
-                edges_with_direction = []
-                for edge_id in incoming_network_edge_ids:
-                    # Use the new ID-based direction inference function
-                    direction = get_approach_direction_from_id(edge_id, junction_id)
-                    edges_with_direction.append((direction, edge_id))
-
-                # Sort edges by direction (NSEW)
-                sorted_edges = sorted(
-                    edges_with_direction,
-                    key=lambda item: DIRECTION_ORDER.get(item[0], 5),
-                )
-
-                # Now, for each sorted edge, get and sort its lanes
-                for direction, edge_id in sorted_edges:
-                    try:
-                        lane_ids = traci.edge.getLaneIds(edge_id)
-
-                        # Sort lanes by their index (the number after the last underscore)
-                        # Example: 'edgeID_0', 'edgeID_1', 'edgeID_2'
-                        def get_lane_index(lane_id):
-                            try:
-                                index_str = lane_id.split("_")[-1]
-                                return int(index_str)
-                            except (ValueError, IndexError):
-                                # Return a high number if index cannot be parsed, to sort them last
-                                return 999
-
-                        sorted_lane_ids = sorted(lane_ids, key=get_lane_index)
-                        lanes_with_sorting_info.extend(sorted_lane_ids)
-
-                    except traci.exceptions.TraCIException as e:
-                        print(
-                            f"Error getting lanes for edge '{edge_id}' for junction '{junction_id}': {e}"
-                        )
-                    except Exception as e:
-                        print(
-                            f"General error getting lanes for edge '{edge_id}' for junction '{junction_id}': {e}"
-                        )
-
-            junction_lane_map[junction_id] = lanes_with_sorting_info
-
-            print(f"  Junction '{junction_id}': Ordered incoming lanes:")
-            if lanes_with_sorting_info:
-                for lane_id in lanes_with_sorting_info:
-                    print(f"    - {lane_id}")
-            else:
-                print("    (No incoming network lanes found or processed)")
-
-        except traci.exceptions.TraCIException as e:
-            print(f"TraCI error processing junction '{junction_id}': {e}")
-            return None
-        except Exception as e:
-            print(f"General error processing junction '{junction_id}': {e}")
-            return None
-
-    print("--- Ordering Complete ---")
-    return junction_lane_map
-
-
 def build_junction_lane_mapping(junction_ids: list, lane_ids: list) -> dict:
     junction_lane_map = {junction_id: [[], [], [], []] for junction_id in junction_ids}
     try:
@@ -282,7 +189,7 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
         sumo_process = subprocess.Popen(
             sumo_cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
 
         # Wait a moment for SUMO to start and open the port
@@ -295,6 +202,7 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
         max_retries = 15  # Increased retries slightly
         while retry_count < max_retries:
             try:
+                print(f'Trying to connect to traci: {retry_count} tried')
                 traci.init(port=port)
                 print("TraCI connection successful.")
                 break  # Exit retry loop on success
@@ -303,6 +211,15 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
                 print(
                     f"Connection refused. Retrying in 1 second... (Attempt {retry_count}/{max_retries})"
                 )
+                if sumo_process and sumo_process.poll() is not None:
+                    print("\n--- SUMO Process Died During Connection Attempt ---")
+                    stdout, stderr = sumo_process.communicate()
+                    print(f"SUMO process exited with code {sumo_process.returncode}")
+                    if stdout: 
+                        print("SUMO STDOUT:\n", stdout.decode(errors='ignore'))
+                    if stderr: 
+                        print("SUMO STDERR:\n", stderr.decode(errors='ignore'))
+                    print("---------------------------------------------------")
                 time.sleep(1)
             except Exception as e:
                 print(
@@ -310,6 +227,15 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
                 )
                 # Don't retry for unexpected errors
                 if sumo_process and sumo_process.poll() is None:
+                    print("\n--- SUMO Process Died During Connection Attempt ---")
+                    stdout, stderr = sumo_process.communicate()
+                    print(f"SUMO process exited with code {sumo_process.returncode}")
+                    if stdout: 
+                        print("SUMO STDOUT:\n", stdout.decode(errors='ignore'))
+                    if stderr: 
+                        print("SUMO STDERR:\n", stderr.decode(errors='ignore'))
+                    print("---------------------------------------------------")
+                    sys.exit(1)
                     sumo_process.terminate()
                     try:
                         sumo_process.wait(timeout=5)
@@ -393,58 +319,238 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
         sys.exit(1)
 
 
-def get_lane_index(lane_id:str):
-    return lane_id.split('_')[-1]
+def _parse_junction_id(junction_id_str: str) -> tuple[int, int] | None:
+    if not junction_id_str or not junction_id_str.startswith("J_"):
+        return None
+    parts = junction_id_str.split("_")
+    if len(parts) != 3:
+        return None
+    try:
+        row = int(parts[1])
+        col = int(parts[2])
+        return row, col
+    except ValueError:
+        return None
 
-def order_lanes_in_edge(junction_lane_map:dict[str,list[list[str]]]):
+
+def get_lane_index(lane_id_str: str) -> int:
+    try:
+        parts = lane_id_str.rsplit('_', 1)
+        if len(parts) > 1:
+             return int(parts[-1])
+        return 0
+    except (ValueError, IndexError):
+        return 0
+    
+
+def _get_neighbor_info(current_junction_id: str, tl_junctions: list[str]) -> tuple[list[int], list[str | None]]:
+    presence_vector = [0] * 4
+    neighbor_id_list = [None] * 4
+
+    neighbor_deltas = {
+        "n": (-1, 0),
+        "s": (+1, 0),
+        "e": (0, +1),
+        "w": (0, -1),
+    }
+    neighbor_indices_in_vector = {"n": 0, "s": 1, "e": 2, "w": 3}
+
+    current_coords = _parse_junction_id(current_junction_id)
+    if current_coords is None:
+         return presence_vector, neighbor_id_list
+
+    current_row, current_col = current_coords
+
+    for direction_str in ["n", "s", "e", "w"]:
+         delta = neighbor_deltas[direction_str]
+         neighbor_vec_index = neighbor_indices_in_vector[direction_str]
+
+         neighbor_row = current_row + delta[0]
+         neighbor_col = current_col + delta[1]
+         potential_neighbor_id = f"J_{neighbor_row}_{neighbor_col}"
+
+         if potential_neighbor_id in tl_junctions:
+             presence_vector[neighbor_vec_index] = 1
+             neighbor_id_list[neighbor_vec_index] = potential_neighbor_id
+
+    return presence_vector, neighbor_id_list
+
+def get_own_state(
+    junction_id: str,
+    structured_junction_lane_map: dict[str, list[list[str]]],
+    max_lanes_per_direction: int,
+    current_sim_time: float
+) -> list[float]:
+    block_size = (4 * max_lanes_per_direction) + 2
+    queue_block_size = 4 * max_lanes_per_direction
+
+    state_block = [-1.0] * block_size
+
+    if junction_id not in structured_junction_lane_map:
+         return state_block
+
+    directional_lists = structured_junction_lane_map[junction_id]
+
+    for dir_list_index in range(len(directional_lists)):
+        lanes_list = directional_lists[dir_list_index]
+
+        for lane_idx_in_list in range(len(lanes_list)):
+             lane_id = lanes_list[lane_idx_in_list]
+
+             flat_index = (dir_list_index * max_lanes_per_direction) + lane_idx_in_list
+
+             if flat_index < queue_block_size:
+                 try:
+                     queue_value = traci.lane.getLastStepHaltingNumber(lane_id)
+                     state_block[flat_index] = float(queue_value)
+                 except traci.exceptions.TraCIException:
+                     pass
+                 except Exception:
+                     pass
+
+    phase = -1.0
+    time_spent = -1.0
+
+    try:
+        if traci.junction.getType(junction_id) == "traffic_light":
+            current_phase = traci.trafficlight.getPhase(junction_id)
+            phase = float(current_phase)
+
+            try:
+                next_switch_time = traci.trafficlight.getNextSwitch(junction_id)
+                current_phase_duration = traci.trafficlight.getPhaseDuration(junction_id)
+                time_spent_calc = current_phase_duration - (next_switch_time - current_sim_time)
+                time_spent = max(0.0, time_spent_calc)
+            except traci.exceptions.TraCIException:
+                 pass
+            except Exception:
+                pass
+
+    except traci.exceptions.TraCIException:
+        pass
+    except Exception:
+        pass
+
+    state_block[queue_block_size] = phase
+    state_block[queue_block_size + 1] = time_spent
+
+    return state_block
+
+
+def build_state_vector(
+    junction_id: str,
+    tl_junctions: list[str],
+    structured_junction_lane_map: dict[str, list[list[str]]],
+    max_lanes_per_direction: int,
+    current_sim_time: float
+) -> list[float]:
+    block_size = (4 * max_lanes_per_direction) + 2
+    padding_block = [-1.0] * block_size
+
+    if junction_id not in tl_junctions or junction_id not in structured_junction_lane_map or _parse_junction_id(junction_id) is None:
+         return [-1.0] * (block_size + 4 + (4 * block_size))
+
+    own_state = get_own_state(
+        junction_id,
+        structured_junction_lane_map,
+        max_lanes_per_direction,
+        current_sim_time
+    )
+    state_vector = own_state[:]
+
+    presence_vector, neighbor_id_list = _get_neighbor_info(junction_id, tl_junctions)
+
+    state_vector.extend([float(p) for p in presence_vector])
+
+    for neighbor_id in neighbor_id_list:
+        if neighbor_id is not None and neighbor_id in structured_junction_lane_map:
+            nbr_state = get_own_state(
+                neighbor_id,
+                structured_junction_lane_map,
+                max_lanes_per_direction,
+                current_sim_time
+            )
+        else:
+            nbr_state = padding_block
+
+        state_vector.extend(nbr_state)
+
+    return state_vector
+
+
+
+def order_lanes_in_edge(junction_lane_map: dict[str, list[list[str]]]):
     for junction, directions in junction_lane_map.items():
         for index, direction in enumerate(directions):
             direction.sort(key=get_lane_index)
     return junction_lane_map
 
 
-def calculate_neighbors(junction_id:str) -> list[int]:
-    x, y = junction_id.split('_')[1], junction_id.split('_')[2]
-    presence_vector = [1,1,1,1]
-    if x==0:
-        presence_vector[3]=0
-    if x==2:
-        presence_vector[2]=0
-    if y==0:
-        presence_vector[0]=0
-    if y==2:
-        presence_vector[1]=0
+def calculate_neighbors(junction_id: str) -> list[int]:
+    x, y = junction_id.split("_")[1], junction_id.split("_")[2]
+    presence_vector = [1, 1, 1, 1]
+    if x == 0:
+        presence_vector[3] = 0
+    if x == 2:
+        presence_vector[2] = 0
+    if y == 0:
+        presence_vector[0] = 0
+    if y == 2:
+        presence_vector[1] = 0
     return presence_vector
 
 
-def get_own_state(junction_id, junction_lane_map):
-    pass
+def get_full_junction_state(
+    junction_id: str,
+    tl_junctions: list[str],
+    structured_junction_lane_map: dict[str, list[list[str]]],
+    max_lanes_per_direction: int
+) -> list[float]:
+    """
+    Gets the full state vector for a given junction, including its state
+    and the states of its adjacent traffic light neighbors. Fetches the
+    current simulation time from TraCI internally.
 
-def build_state_vector(junction_id, junction_lane_map):
-    state = []
-    padding = [0]*14
-    # first own jn queues, then phase, then time spent, then neighbor map, then neighbor states (ordered)
-    presence_vector = calculate_neighbors[junction_id]
-    # get own queues for all lanes for junction, put them in order
-    own_state = get_own_state(junction_id, junction_lane_map)
-    state.extend(own_state)
-    state.extend(presence_vector)
-    for nbr in presence_vector:
-        if nbr:
-            # make nbr id first, need enumerate
-            nbr_state = get_own_state(junction_id, junction_lane_map)
-        else:
-            nbr_state = padding
-        state.extend(nbr_state)
+    Args:
+        junction_id: The ID of the junction for which to build the state.
+        tl_junctions: A list of all traffic light junction IDs in the network.
+        structured_junction_lane_map: A dict {jid: [[N_lanes],[S_lanes],[E_lanes],[W_lanes]], ...}
+                                      where inner lists are sorted by lane index,
+                                      and the order of the inner lists is N, S, E, W.
+        max_lanes_per_direction: The maximum number of lanes any single incoming
+                                 approach direction has in the network (e.g., 3).
 
-    assert len(state)==74
-    return state
+    Returns:
+        A list of floats representing the padded state vector (74 elements if max_lanes=3).
+        Returns a vector initialized with padding (-1.0) if the current_junction_id
+        is invalid, not a TL, or not in the lane map.
+    """
+    # Get the current simulation time from TraCI
+    try:
+        current_sim_time = traci.simulation.getTime()
+    except traci.exceptions.TraCIException as e:
+        print(f"Error getting current simulation time from TraCI: {e}")
+        # Return a padding vector if simulation time cannot be retrieved
+        block_size = (4 * max_lanes_per_direction) + 2
+        return [-1.0] * (block_size + 4 + (4 * block_size))
+    except Exception as e:
+        print(f"An unexpected error occurred getting simulation time: {e}")
+        block_size = (4 * max_lanes_per_direction) + 2
+        return [-1.0] * (block_size + 4 + (4 * block_size))
 
+    state_vector = build_state_vector(
+        junction_id,
+        tl_junctions,
+        structured_junction_lane_map,
+        max_lanes_per_direction,
+        current_sim_time
+    )
 
-    
+    return state_vector
+
 
 if __name__ == "__main__":
-    start_sumo()
+    start_sumo(use_gui=False)
     all_lanes = traci.lane.getIDList()
     non_internal_lanes = [lane for lane in all_lanes if not lane.startswith(":")]
     print("len non internal lanes", len(non_internal_lanes))
@@ -453,6 +559,12 @@ if __name__ == "__main__":
 
     junction_lane_map = build_junction_lane_mapping(tl_junctions, non_internal_lanes)
     ordered_junction_lane_map = order_lanes_in_edge(junction_lane_map)
-    for junction in ordered_junction_lane_map:
-        print('\n', junction)
-        print(ordered_junction_lane_map[junction])
+
+    sim_time = traci.simulation.getTime()
+
+    state = build_state_vector("J_0_0", tl_junctions, ordered_junction_lane_map, 3, sim_time)
+    print(state)
+    state = build_state_vector("J_1_1", tl_junctions, ordered_junction_lane_map, 3, sim_time)
+    print(state)
+    state = build_state_vector("J_2_1", tl_junctions, ordered_junction_lane_map, 3, sim_time)
+    print(state)
