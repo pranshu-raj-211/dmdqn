@@ -4,7 +4,8 @@ import os
 import sys
 import subprocess
 import time
-
+import numpy as np
+from log_config import logger
 
 DIRECTION_ORDER = {"n": 0, "s": 1, "e": 2, "w": 3, "unknown": 4, "error": 5}
 SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3.sumocfg"
@@ -182,6 +183,7 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
     sumo_cmd.extend(["--remote-port", str(port)])
 
     print(f"\nStarting SUMO process: {' '.join(sumo_cmd)}")
+    logger.debug("Starting SUMO process")
     sumo_process = None
 
     try:
@@ -197,6 +199,7 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
 
         # Connect TraCI to the running SUMO process on the specified port
         print(f"Attempting to connect TraCI on port {port}...")
+        logger.debug("Attempting to connect TraCI on port")
         # Use a loop for connection retries as SUMO might take a moment to be ready
         retry_count = 0
         max_retries = 15  # Increased retries slightly
@@ -205,6 +208,7 @@ def start_sumo(use_gui=False, sumo_seed="42", port=PORT):
                 print(f"Trying to connect to traci: {retry_count} tried")
                 traci.init(port=port)
                 print("TraCI connection successful.")
+                logger.debug("TraCI connection successful")
                 break  # Exit retry loop on success
             except ConnectionRefusedError:
                 retry_count += 1
@@ -499,6 +503,7 @@ def build_state_vector(
 
     This includes local state, neighbor presence vector, neighbor local states.
     """
+    max_lanes_per_direction = 3
     block_size = (4 * max_lanes_per_direction) + 2
     padding_block = [-1.0] * block_size
 
@@ -510,25 +515,36 @@ def build_state_vector(
     ):
         return [-1.0] * (block_size + 4 + (4 * block_size))
 
-    own_state = get_own_state(
+    own_state = np.array(get_own_state(
         junction_id,
         structured_junction_lane_map,
         max_lanes_per_direction,
         current_sim_time,
-    )
-    state_vector = own_state[:]
+    ), dtype=np.float32)
+
+    state_vector = own_state.tolist()
 
     presence_vector, neighbor_id_list = _get_neighbor_info(junction_id, tl_junctions)
 
     state_vector.extend([float(p) for p in presence_vector])
 
+    logger.debug(f"Building state vector for junction {junction_id}")
+    logger.debug(f"Own state size: {len(own_state)}")
+    logger.debug(f"Presence vector: {presence_vector}")
     for neighbor_id in neighbor_id_list:
         if neighbor_id is not None and neighbor_id in global_state:
-            nbr_state = global_state[neighbor_id]
+            logger.debug(f"Neighbor {neighbor_id} state size: {len(global_state[neighbor_id])}")
         else:
-            nbr_state = padding_block
-        state_vector.extend(nbr_state)
+            logger.debug(f"Neighbor {neighbor_id} is missing or padded.")
 
+    for neighbor_id in neighbor_id_list:
+        if neighbor_id is not None and neighbor_id in global_state:
+            nbr_state = np.array(global_state[neighbor_id], dtype=np.float32)
+        else:
+            nbr_state = np.array(padding_block, dtype=np.float32)
+        state_vector.extend(nbr_state.tolist())
+
+    assert len(state_vector) == 74, f"Unexpected state vector length {len(state_vector)}"
     return state_vector
 
 

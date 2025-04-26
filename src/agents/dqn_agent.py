@@ -20,6 +20,7 @@ from tensorflow import keras
 from tensorflow.keras.layers import Dense, Input, Concatenate
 from collections import deque
 import random
+from log_config import logger
 
 
 class ReplayBuffer:
@@ -28,6 +29,10 @@ class ReplayBuffer:
 
     def add(self, experience):
         """Adds an experience tuple (s, a, r, s', d) to the replay buffer."""
+        state, action, reward, next_state, done = experience
+        if len(state) != len(next_state):
+            logger.error(f"State and next_state sizes are inconsistent: {len(state)} vs {len(next_state)}")
+            return
         self.buffer.append(experience)
 
     def sample(self, batch_size):
@@ -38,11 +43,27 @@ class ReplayBuffer:
         # Unpack batch into separate arrays/lists
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = np.array(states)
+        logger.debug("Debugging ReplayBuffer.sample:")
+        logger.debug(f"Batch size: {batch_size}")
+        logger.debug(f"Number of experiences in buffer: {len(self.buffer)}")
+        logger.debug(f"Sampled states: {states}")
+        logger.debug(f"Sampled actions: {actions}")
+        logger.debug(f"Sampled rewards: {rewards}")
+        logger.debug(f"Sampled next_states: {next_states}")
+        logger.debug(f"Sampled dones: {dones}")
+
+        
+        states = np.array([np.array(state, dtype=np.float32) for state in states])
         actions = np.array(actions)
         rewards = np.array(rewards)
         next_states = np.array(next_states)
         dones = np.array(dones, dtype=np.float32) # Use float for multiplication with gamma
+
+        
+
+        # Check the shape of each state
+        for i, state in enumerate(states):
+            logger.debug(f"State {i} shape: {np.array(state).shape}")
 
         return states, actions, rewards, next_states, dones
 
@@ -233,6 +254,11 @@ class DQNAgent:
         self.replay_buffer.add(experience)
         self.global_step_count += 1 # Increment global step counter here
 
+    def remember(self, state, action, reward, next_state, done):
+        """Stores an experience tuple (state, action, reward, next_state, done) in the replay buffer."""
+        experience = (state, action, reward, next_state, done)
+        self.replay_buffer.add(experience)
+
     # Use tf.function for performance if your learn step is complex
     # @tf.function
     def learn(self):
@@ -315,4 +341,8 @@ class DQNAgent:
     def get_epsilon(self):
         """Returns the current epsilon value."""
         return self.epsilon
+
+    def replay(self):
+        """Performs a learning step using experiences from the replay buffer."""
+        self.learn()
 

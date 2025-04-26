@@ -43,6 +43,7 @@ from src.experimental.order_lanes import (
     get_own_state,
     build_state_vector,
 )
+from log_config import logger
 
 AGENT_CONFIG_PATH = ""
 ENV_CONFIG_PATH = ""
@@ -93,10 +94,8 @@ def initialize_environment():
     return tl_junctions, ordered_junction_lane_map
 
 
-# Create agents for each junction
 def create_agents(tl_junctions):
     agents = {}
-    # Example configuration for agents
     agent_config = {
         "learning_rate": 0.001,
         "gamma": 0.99,
@@ -111,8 +110,8 @@ def create_agents(tl_junctions):
 
     for junction_id in tl_junctions:
         agents[junction_id] = DQNAgent(
-            state_size=74,  # Example state size
-            action_size=2,  # Example action size
+            state_size=74,
+            action_size=4,
             agent_id=junction_id,
             config=agent_config
         )
@@ -131,7 +130,7 @@ run = wandb.init(
     },
     settings=wandb.Settings(init_timeout=300),
 )
-print("logged into wandb")
+logger.debug("logged into wandb")
 
 
 # Training loop
@@ -139,30 +138,36 @@ def train_agents():
     tl_junctions, ordered_junction_lane_map = initialize_environment()
     agents = create_agents(tl_junctions)
 
+    assert len(agents)==9, f'Number of agents unexpected {len(agents.keys())}'
+
     for episode in range(EPISODES):
-        print(f"Episode {episode + 1}/{EPISODES}")
+        logger.debug(f"Episode {episode + 1}/{EPISODES}")
         traci.load(["-c", SUMO_CFG_PATH])
         global_state = {}
         current_time = traci.simulation.getTime()
 
         # Initialize global state
         for junction in tl_junctions:
-            global_state[junction] = build_state_vector(
+            global_state[junction] = get_own_state(
                 junction_id=junction,
-                tl_junctions=tl_junctions,
                 structured_junction_lane_map=ordered_junction_lane_map,
                 max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
                 current_sim_time=current_time,
-                global_state=global_state,
             )
 
         done = False
-        total_reward = 0  # Track total reward for the episode
+        total_reward = 0
         while not done:
             actions = {}
             for junction_id, agent in agents.items():
-                state = global_state[junction_id]
-                # Convert state to TensorFlow tensor before selecting action
+                state = build_state_vector(
+                    junction_id=junction_id,
+                    tl_junctions=tl_junctions,
+                    structured_junction_lane_map=ordered_junction_lane_map,
+                    max_lanes_per_direction=3,
+                    current_sim_time=current_time,
+                    global_state=global_state
+                )
                 state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
                 actions[junction_id] = agent.select_action(state_tensor)
 
@@ -205,7 +210,7 @@ def train_agents():
 
         # Log episode metrics to wandb
         run.log({"episode": episode + 1, "total_reward": total_reward})
-        print(f"Episode {episode + 1} complete. Total Reward: {total_reward}")
+        logger.debug(f"Episode {episode + 1} complete. Total Reward: {total_reward}")
 
     traci.close()
     run.finish()
