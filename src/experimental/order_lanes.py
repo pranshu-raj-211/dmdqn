@@ -528,14 +528,14 @@ def build_state_vector(
 
     state_vector.extend([float(p) for p in presence_vector])
 
-    logger.debug(f"Building state vector for junction {junction_id}")
-    logger.debug(f"Own state size: {len(own_state)}")
-    logger.debug(f"Presence vector: {presence_vector}")
-    for neighbor_id in neighbor_id_list:
-        if neighbor_id is not None and neighbor_id in global_state:
-            logger.debug(f"Neighbor {neighbor_id} state size: {len(global_state[neighbor_id])}")
-        else:
-            logger.debug(f"Neighbor {neighbor_id} is missing or padded.")
+    # logger.debug(f"Building state vector for junction {junction_id}")
+    # logger.debug(f"Own state size: {len(own_state)}")
+    # logger.debug(f"Presence vector: {presence_vector}")
+    # for neighbor_id in neighbor_id_list:
+    #     if neighbor_id is not None and neighbor_id in global_state:
+    #         logger.debug(f"Neighbor {neighbor_id} state size: {len(global_state[neighbor_id])}")
+    #     else:
+    #         logger.debug(f"Neighbor {neighbor_id} is missing or padded.")
 
     for neighbor_id in neighbor_id_list:
         if neighbor_id is not None and neighbor_id in global_state:
@@ -544,8 +544,9 @@ def build_state_vector(
             nbr_state = np.array(padding_block, dtype=np.float32)
         state_vector.extend(nbr_state.tolist())
 
+    logger.debug(f'{junction_id}: state vector length {len(state_vector)}')
     assert len(state_vector) == 74, f"Unexpected state vector length {len(state_vector)}"
-    return state_vector
+    return np.array(state_vector)
 
 
 def order_lanes_in_edge(junction_lane_map: dict[str, list[list[str]]]):
