@@ -55,6 +55,8 @@ baseline = None
 EPISODES = 100
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 1.0
+ACTION_MAP = {0:0, 1:3,2:6,3:9}
+MAX_SIM_TIME = 3600
 
 
 def set_seeds(seed_value):
@@ -128,7 +130,7 @@ run = wandb.init(
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=300),
+    settings=wandb.Settings(init_timeout=90, mode='offline'),
 )
 logger.debug("logged into wandb")
 
@@ -155,10 +157,11 @@ def train_agents():
                 current_sim_time=current_time,
             )
 
-        done = False
+        done = 0
         total_reward = 0
         while not done:
-            actions = {}
+            actions = dict()
+            state_dict = dict()
             for junction_id, agent in agents.items():
                 state = build_state_vector(
                     junction_id=junction_id,
@@ -170,19 +173,21 @@ def train_agents():
                 )
                 state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
                 actions[junction_id] = agent.select_action(state_tensor)
+                state_dict[junction_id] = state_tensor
 
             # Apply actions and step simulation
             for junction_id, action in actions.items():
-                traci.trafficlight.setPhase(junction_id, action)
+                traci.trafficlight.setPhase(junction_id, ACTION_MAP[action])
 
             target_time = current_time + STEP_DURATION
             while current_time < target_time:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
+                done = traci.simulation.getMinExpectedNumber() == 0 or current_time >= MAX_SIM_TIME
 
             # Update global state and calculate rewards
-            next_global_state = {}
-            rewards = {}
+            next_global_state = dict()
+            rewards = dict()
             for junction in tl_junctions:
                 next_global_state[junction] = get_own_state(
                     junction_id=junction,
@@ -195,13 +200,26 @@ def train_agents():
                 )
                 total_reward += rewards[junction]  # Accumulate reward
 
+            next_state_dict = dict()
+            for junction_id, agent in agents.items():
+                state = build_state_vector(
+                    junction_id=junction_id,
+                    tl_junctions=tl_junctions,
+                    structured_junction_lane_map=ordered_junction_lane_map,
+                    max_lanes_per_direction=3,
+                    current_sim_time=current_time,
+                    global_state=next_global_state
+                )
+                state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
+                next_state_dict[junction_id] = state_tensor
+
             # Train agents
             for junction_id, agent in agents.items():
                 agent.remember(
-                    global_state[junction_id],
+                    state_dict[junction_id],
                     actions[junction_id],
                     rewards[junction_id],
-                    next_global_state[junction_id],
+                    next_state_dict[junction_id],
                     done,
                 )
                 agent.replay()

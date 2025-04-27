@@ -27,45 +27,51 @@ class ReplayBuffer:
     def __init__(self, buffer_size:int):
         self.buffer = deque(maxlen=buffer_size)
 
-    def add(self, experience):
+    def add(self, experience:tuple):
         """Adds an experience tuple (s, a, r, s', d) to the replay buffer."""
         state, action, reward, next_state, done = experience
-        if len(state) != len(next_state):
-            logger.error(f"State and next_state sizes are inconsistent: {len(state)} vs {len(next_state)}")
+
+        logger.debug(f"Original state shape: {len(state)},{state} , next_state shape: {len(next_state)}, {next_state}")
+
+        state_copy = np.array(state, copy=True)
+        next_state_copy = np.array(next_state, copy=True)
+        logger.info(f'State shape before {state_copy.shape}, {next_state_copy.shape}, {action}, {reward}, {done}')
+
+        state_copy = np.squeeze(state_copy, axis=0)
+        next_state_copy = np.squeeze(next_state_copy, axis=0)
+        logger.info(f'State shape after {state_copy.shape}, {next_state_copy.shape}, {action}, {reward}, {done}')
+
+
+        logger.debug(f"Copied state shape: {state_copy.shape}, copied next_state shape: {next_state_copy.shape}")
+
+        if len(state_copy) != len(next_state_copy):
+            logger.error(f"State and next_state sizes are inconsistent: {len(state_copy)} vs {len(next_state_copy)}")
             return
-        self.buffer.append(experience)
+
+        self.buffer.append((state_copy, action, reward, next_state_copy, done))
+        logger.debug(f"Replay buffer size after adding: {len(self.buffer)}")
+
 
     def sample(self, batch_size):
         """Samples a random mini-batch of experiences from the buffer."""
         if len(self.buffer) < batch_size:
             return None # Not enough samples yet
         batch = random.sample(self.buffer, batch_size)
-        # Unpack batch into separate arrays/lists
-        states, actions, rewards, next_states, dones = zip(*batch)
+        states, actions, rewards, next_states, dones = map(np.array, zip(*batch))
 
         logger.debug("Debugging ReplayBuffer.sample:")
         logger.debug(f"Batch size: {batch_size}")
         logger.debug(f"Number of experiences in buffer: {len(self.buffer)}")
-        logger.debug(f"Sampled states: {states}")
-        logger.debug(f"Sampled actions: {actions}")
-        logger.debug(f"Sampled rewards: {rewards}")
-        logger.debug(f"Sampled next_states: {next_states}")
-        logger.debug(f"Sampled dones: {dones}")
+        logger.debug(f"Sampled states:{states.shape}\n {states}")
+        logger.debug(f"Sampled actions:{actions.shape}\n {actions}")
+        logger.debug(f"Sampled rewards:{rewards.shape}\n {rewards}")
+        logger.debug(f"Sampled next_states:{next_states.shape}\n {next_states}")
+        logger.debug(f"Sampled dones:{dones.shape}\n {dones}")
 
-        
-        states = np.array([np.array(state, dtype=np.float32) for state in states])
-        actions = np.array(actions)
-        rewards = np.array(rewards)
-        next_states = np.array(next_states)
-        dones = np.array(dones, dtype=np.float32) # Use float for multiplication with gamma
-
-        
-
-        # Check the shape of each state
         for i, state in enumerate(states):
             logger.debug(f"State {i} shape: {np.array(state).shape}")
-
         return states, actions, rewards, next_states, dones
+
 
     def __len__(self):
         """Returns the current size of the buffer."""
@@ -87,8 +93,8 @@ class DQNAgent:
             config (dict): Dictionary of agent hyperparameters.
         """
         self.agent_id = agent_id
-        self.state_size = state_size
-        self.action_size = action_size
+        self.state_size = 74
+        self.action_size = 4
 
         # Hyperparameters
         self.learning_rate = config.get("learning_rate", 0.001)
@@ -210,7 +216,7 @@ class DQNAgent:
         """
         # Decay epsilon (linear decay)
         if self.epsilon > self.epsilon_min:
-             self.epsilon -= self.epsilon_decay_rate
+            self.epsilon -= self.epsilon_decay_rate
 
         if np.random.rand() < self.epsilon:
             # Explore: Choose a random action
@@ -248,15 +254,16 @@ class DQNAgent:
         return [local_queues, local_signal, presence, neighbor_n, neighbor_e, neighbor_s, neighbor_w]
 
 
-    def store_experience(self, experience):
+    def store_experience(self, experience:np.array):
         """Stores an experience tuple (s, a, r, s', d) in the replay buffer."""
         # Experience is expected as (NumPy array, int, float, NumPy array, bool)
         self.replay_buffer.add(experience)
         self.global_step_count += 1 # Increment global step counter here
 
-    def remember(self, state, action, reward, next_state, done):
+    def remember(self, state:np.array, action:np.array, reward:np.array, next_state:np.array, done:np.array):
         """Stores an experience tuple (state, action, reward, next_state, done) in the replay buffer."""
         experience = (state, action, reward, next_state, done)
+        logger.debug(f"At agent training: state shape {state.shape}, next_state shape {next_state.shape}")
         self.replay_buffer.add(experience)
 
     # Use tf.function for performance if your learn step is complex
