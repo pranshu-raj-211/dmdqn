@@ -261,7 +261,7 @@ def train_agents():
                 )
                 loss = agent.replay()
                 logger.info(
-                    f"Step: {step_count}, loss: {loss}, global_reward: {global_reward}"
+                    f"Episode: {episode}, Step: {step_count}, loss: {loss}, global_reward: {global_reward}"
                 )
                 run.log(
                     {
