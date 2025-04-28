@@ -58,7 +58,7 @@ ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
 MAX_SIM_TIME = 3600
 
 
-gpus = tf.config.list_physical_devices('GPU')
+gpus = tf.config.list_physical_devices("GPU")
 if gpus:
     try:
         tf.config.experimental.set_memory_growth(gpus[0], True)
@@ -149,8 +149,16 @@ def calculate_global_reward(global_state: dict, next_global_state: dict):
     return -1.0 * sum(sum(state[:12]) for state in global_state.values())
 
 
-def calculate_rewards(junction_id:str, global_state:dict, next_global_state:dict, alpha:float, beta:float) -> float:
-    local_reward = calculate_local_reward(global_state[junction_id], next_global_state[junction_id])
+def calculate_rewards(
+    junction_id: str,
+    global_state: dict,
+    next_global_state: dict,
+    alpha: float,
+    beta: float,
+) -> float:
+    local_reward = calculate_local_reward(
+        global_state[junction_id], next_global_state[junction_id]
+    )
     global_reward = calculate_global_reward(global_state, next_global_state)
     return alpha * local_reward + beta * global_reward
 
@@ -225,7 +233,9 @@ def train_agents():
                 rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
             total_reward = global_reward
 
-            logger.info(f'Step: {step_count}, global_reward: {global_reward}, total reward: {total_reward}')
+            logger.info(
+                f"Step: {step_count}, global_reward: {global_reward}, total reward: {total_reward}"
+            )
 
             next_state_dict = dict()
             for junction_id, agent in agents.items():
@@ -250,12 +260,21 @@ def train_agents():
                     done,
                 )
                 loss = agent.replay()
-                logger.info(f'Step: {step_count}, loss: {loss}, global_reward: {global_reward}')
+                logger.info(
+                    f"Step: {step_count}, loss: {loss}, global_reward: {global_reward}"
+                )
+                run.log(
+                    {
+                        "episode": episode,
+                        "step": step_count,
+                        "loss": loss,
+                        "global_reward": global_reward,
+                    }
+                )
 
             global_state = next_global_state
             step_count += 1
 
-        # Log episode metrics to wandb
         run.log({"episode": episode + 1, "total_reward": total_reward})
         logger.info(f"Episode {episode + 1} complete. Total Reward: {total_reward}")
 
