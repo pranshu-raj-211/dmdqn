@@ -51,12 +51,21 @@ SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3.net.xml"
 baseline = None
 
-# Training parameters
-EPISODES = 100
+EPISODES = 5
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 1.0
 ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
 MAX_SIM_TIME = 3600
+
+
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        tf.config.experimental.set_memory_growth(gpus[0], True)
+        print("GPU is enabled.")
+    except RuntimeError as e:
+        print(e)
+print("Num GPUs Available:", len(gpus))
 
 
 def set_seeds(seed_value):
@@ -106,7 +115,7 @@ def create_agents(tl_junctions):
         "epsilon_decay_steps": 100000,
         "replay_buffer_size": 10000,
         "batch_size": 32,
-        "target_update_frequency": 1000,
+        "target_update_frequency": 500,
         "nn_layers": [128, 128],
     }
 
