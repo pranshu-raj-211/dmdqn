@@ -141,14 +141,12 @@ run = wandb.init(
 
 
 def calculate_local_reward(current_state, next_state):
-    return sum(current_state[:12]) - sum(next_state[:12])
+    return -1.0 * sum(current_state[:12])
 
 
 def calculate_global_reward(global_state: dict, next_global_state: dict):
     """Return negative of difference of total queue length between next state and current."""
-    return sum(sum(state[:12]) for state in global_state.values()) - sum(
-        sum(state[:12]) for state in next_global_state.values()
-    )
+    return -1.0 * sum(sum(state[:12]) for state in global_state.values())
 
 
 def calculate_rewards(junction_id:str, global_state:dict, next_global_state:dict, alpha:float, beta:float) -> float:
@@ -180,6 +178,7 @@ def train_agents():
 
         done = 0
         total_reward = 0
+        step_count = 0
         while not done:
             actions = dict()
             state_dict = dict()
@@ -226,6 +225,8 @@ def train_agents():
                 rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
             total_reward = global_reward
 
+            logger.info(f'Step: {step_count}, global_reward: {global_reward}, total reward: {total_reward}')
+
             next_state_dict = dict()
             for junction_id, agent in agents.items():
                 state = build_state_vector(
@@ -248,9 +249,11 @@ def train_agents():
                     next_state_dict[junction_id],
                     done,
                 )
-                agent.replay()
+                loss = agent.replay()
+                logger.info(f'Step: {step_count}, loss: {loss}, global_reward: {global_reward}')
 
             global_state = next_global_state
+            step_count += 1
 
         # Log episode metrics to wandb
         run.log({"episode": episode + 1, "total_reward": total_reward})

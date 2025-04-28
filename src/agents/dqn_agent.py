@@ -35,7 +35,7 @@ class ReplayBuffer:
 
         state_copy = np.array(state, copy=True)
         next_state_copy = np.array(next_state, copy=True)
-        logger.info(f'State shape before {state_copy.shape}, {next_state_copy.shape}, {action}, {reward}, {done}')
+        logger.debug(f'State shape before {state_copy.shape}, {next_state_copy.shape}, {action}, {reward}, {done}')
 
         state_copy = np.squeeze(state_copy, axis=0)
         next_state_copy = np.squeeze(next_state_copy, axis=0)
