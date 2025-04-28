@@ -55,7 +55,7 @@ baseline = None
 EPISODES = 100
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 1.0
-ACTION_MAP = {0:0, 1:3,2:6,3:9}
+ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
 MAX_SIM_TIME = 3600
 
 
@@ -66,7 +66,7 @@ def set_seeds(seed_value):
     tf.random.set_seed(seed_value)
     # control hash randomization
     os.environ["PYTHONHASHSEED"] = str(seed_value)
-    print(f"Seeds set to: {seed_value}")
+    logger.info(f"Seeds set to: {seed_value}")
 
 
 def load_config(agent_yaml_path, env_yaml_path):
@@ -112,10 +112,7 @@ def create_agents(tl_junctions):
 
     for junction_id in tl_junctions:
         agents[junction_id] = DQNAgent(
-            state_size=74,
-            action_size=4,
-            agent_id=junction_id,
-            config=agent_config
+            state_size=74, action_size=4, agent_id=junction_id, config=agent_config
         )
     return agents
 
@@ -130,17 +127,32 @@ run = wandb.init(
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=90, mode='offline'),
+    settings=wandb.Settings(init_timeout=90, mode="online"),
 )
-logger.debug("logged into wandb")
 
 
-# Training loop
+def calculate_local_reward(current_state, next_state):
+    return sum(current_state[:12]) - sum(next_state[:12])
+
+
+def calculate_global_reward(global_state: dict, next_global_state: dict):
+    """Return negative of difference of total queue length between next state and current."""
+    return sum(sum(state[:12]) for state in global_state.values()) - sum(
+        sum(state[:12]) for state in next_global_state.values()
+    )
+
+
+def calculate_rewards(junction_id:str, global_state:dict, next_global_state:dict, alpha:float, beta:float) -> float:
+    local_reward = calculate_local_reward(global_state[junction_id], next_global_state[junction_id])
+    global_reward = calculate_global_reward(global_state, next_global_state)
+    return alpha * local_reward + beta * global_reward
+
+
 def train_agents():
     tl_junctions, ordered_junction_lane_map = initialize_environment()
     agents = create_agents(tl_junctions)
 
-    assert len(agents)==9, f'Number of agents unexpected {len(agents.keys())}'
+    assert len(agents) == 9, f"Number of agents unexpected {len(agents.keys())}"
 
     for episode in range(EPISODES):
         logger.debug(f"Episode {episode + 1}/{EPISODES}")
@@ -169,7 +181,7 @@ def train_agents():
                     structured_junction_lane_map=ordered_junction_lane_map,
                     max_lanes_per_direction=3,
                     current_sim_time=current_time,
-                    global_state=global_state
+                    global_state=global_state,
                 )
                 state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
                 actions[junction_id] = agent.select_action(state_tensor)
@@ -183,11 +195,15 @@ def train_agents():
             while current_time < target_time:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
-                done = traci.simulation.getMinExpectedNumber() == 0 or current_time >= MAX_SIM_TIME
+                done = (
+                    traci.simulation.getMinExpectedNumber() == 0
+                    or current_time >= MAX_SIM_TIME
+                )
 
             # Update global state and calculate rewards
             next_global_state = dict()
             rewards = dict()
+            global_reward = calculate_global_reward(global_state, next_global_state)
             for junction in tl_junctions:
                 next_global_state[junction] = get_own_state(
                     junction_id=junction,
@@ -195,10 +211,11 @@ def train_agents():
                     max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
                     current_sim_time=current_time,
                 )
-                rewards[junction] = calculate_reward(
+                local_reward = calculate_local_reward(
                     global_state[junction], next_global_state[junction]
                 )
-                total_reward += rewards[junction]  # Accumulate reward
+                rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
+            total_reward = global_reward
 
             next_state_dict = dict()
             for junction_id, agent in agents.items():
@@ -208,7 +225,7 @@ def train_agents():
                     structured_junction_lane_map=ordered_junction_lane_map,
                     max_lanes_per_direction=3,
                     current_sim_time=current_time,
-                    global_state=next_global_state
+                    global_state=next_global_state,
                 )
                 state_tensor = tf.convert_to_tensor([state], dtype=tf.float32)
                 next_state_dict[junction_id] = state_tensor
@@ -228,14 +245,10 @@ def train_agents():
 
         # Log episode metrics to wandb
         run.log({"episode": episode + 1, "total_reward": total_reward})
-        logger.debug(f"Episode {episode + 1} complete. Total Reward: {total_reward}")
+        logger.info(f"Episode {episode + 1} complete. Total Reward: {total_reward}")
 
     traci.close()
     run.finish()
-
-
-def calculate_reward(current_state, next_state):
-    return sum(current_state[:12]) - sum(next_state[:12])
 
 
 if __name__ == "__main__":
