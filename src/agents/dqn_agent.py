@@ -44,14 +44,9 @@ class ReplayBuffer:
 
         state_copy = np.squeeze(state_copy, axis=0)
         next_state_copy = np.squeeze(next_state_copy, axis=0)
-        logger.info(
+        logger.debug(
             f"State shape after {state_copy.shape}, {next_state_copy.shape}, {action}, {reward}, {done}"
         )
-
-        logger.debug(
-            f"Copied state shape: {state_copy.shape}, copied next_state shape: {next_state_copy.shape}"
-        )
-
         if len(state_copy) != len(next_state_copy):
             logger.error(
                 f"State and next_state sizes are inconsistent: {len(state_copy)} vs {len(next_state_copy)}"
@@ -61,12 +56,17 @@ class ReplayBuffer:
         self.buffer.append((state_copy, action, reward, next_state_copy, done))
         logger.debug(f"Replay buffer size after adding: {len(self.buffer)}")
 
-    def sample(self, batch_size):
+    def sample(self, batch_size:int):
         """Samples a random mini-batch of experiences from the buffer."""
         if len(self.buffer) < batch_size:
             return None  # Not enough samples yet
         batch = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = map(np.array, zip(*batch))
+
+        reward_mean = np.mean(rewards)
+        reward_std = np.std(rewards)
+        epsilon = 1e-8
+        normalized_rewards = (rewards - reward_mean) / (reward_std + epsilon)
 
         # logger.debug("Debugging ReplayBuffer.sample:")
         # logger.debug(f"Batch size: {batch_size}")
@@ -79,7 +79,7 @@ class ReplayBuffer:
 
         states_tf = tf.convert_to_tensor(states, dtype=tf.float16)
         actions_tf = tf.convert_to_tensor(actions, dtype=tf.int16)
-        rewards_tf = tf.convert_to_tensor(rewards, dtype=tf.float16)
+        rewards_tf = tf.convert_to_tensor(normalized_rewards, dtype=tf.float16)
         next_states_tf = tf.convert_to_tensor(next_states, dtype=tf.float16)
         dones_tf = tf.convert_to_tensor(dones, dtype=tf.float16)
         return states_tf, actions_tf, rewards_tf, next_states_tf, dones_tf

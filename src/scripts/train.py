@@ -137,8 +137,23 @@ run = wandb.init(
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=90, mode="offline"),
+    settings=wandb.Settings(init_timeout=90, mode="online"),
 )
+
+
+class SmoothedValue:
+    def __init__(self, alpha=0.90):
+        self.alpha = alpha
+        self.value = None
+
+    def update(self, new_val):
+        if self.value is None:
+            self.value = new_val
+        else:
+            self.value = self.alpha * new_val + (1 - self.alpha) * self.value
+    
+    def get_value(self):
+        return self.value
 
 
 def calculate_local_reward(current_state, next_state):
@@ -221,6 +236,7 @@ def train_agents():
             next_global_state = dict()
             rewards = dict()
             global_reward = calculate_global_reward(global_state, next_global_state)
+            smooth_global_reward.update(global_reward)
             for junction in tl_junctions:
                 next_global_state[junction] = get_own_state(
                     junction_id=junction,
@@ -261,17 +277,18 @@ def train_agents():
                     done,
                 )
                 loss = agent.replay()
-                logger.info(
-                    f"Episode: {episode}, Step: {step_count}, loss: {loss}, global_reward: {global_reward}"
-                )
-                run.log(
-                    {
-                        "episode": episode,
-                        "step": step_count,
-                        "loss": loss,
-                        "global_reward": global_reward,
-                    }
-                )
+            logger.info(
+                f"Episode: {episode}, Step: {step_count}, loss: {loss}, global_reward: {global_reward}"
+            )
+            run.log(
+                {
+                    "episode": episode,
+                    "step": step_count,
+                    "loss": loss,
+                    "global_reward": global_reward,
+                    'smooth_global_reward':smooth_global_reward.get_value(),
+                }
+            )
 
             global_state = next_global_state
             step_count += 1
@@ -282,6 +299,8 @@ def train_agents():
     traci.close()
     run.finish()
 
+
+smooth_global_reward = SmoothedValue(alpha=0.90)
 
 if __name__ == "__main__":
     train_agents()
