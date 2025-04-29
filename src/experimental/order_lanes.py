@@ -461,14 +461,14 @@ def get_own_state(
                 except Exception:
                     pass
 
-    phase = -1.0
+    phase = [0,0,0,0]
     time_spent = -1.0
 
     try:
         if traci.junction.getType(junction_id) == "traffic_light":
             current_phase = traci.trafficlight.getPhase(junction_id)
             # one hot encode phase, zeros for padding
-            phase = PHASE_ENCODING.get(current_phase, default=[0,0,0,0])
+            phase = PHASE_ENCODING.get(current_phase, [0,0,0,0])
 
             try:
                 next_switch_time = traci.trafficlight.getNextSwitch(junction_id)
