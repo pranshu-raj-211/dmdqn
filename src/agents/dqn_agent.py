@@ -169,9 +169,12 @@ class DQNAgent:
             )
 
         model.add(
-            Dense(output_shape, activation="linear"),
-            kernel_initializer=initializers.GlorotUniform(),
-            bias_initializer=initializers.Zeros(),
+            Dense(
+                output_shape,
+                activation="linear",
+                kernel_initializer=initializers.GlorotUniform(),
+                bias_initializer=initializers.Zeros(),
+            )
         )  # Linear activation - raw probs
         # No compile needed here, compilation happens when defining the training step
         return model
