@@ -155,11 +155,7 @@ class DQNAgent:
         """
         model = keras.Sequential(
             [
-                Input(
-                    shape=(input_shape,),
-                    kernel_initializer=initializers.HeNormal(),
-                    bias_initializer=initializers.Zeros(),
-                ),
+                Input(shape=(input_shape,)),
             ]
         )
         for layer_size in hidden_layers:
