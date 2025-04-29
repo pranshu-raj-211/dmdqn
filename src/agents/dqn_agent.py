@@ -68,18 +68,21 @@ class ReplayBuffer:
         batch = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = map(np.array, zip(*batch))
 
-        logger.debug("Debugging ReplayBuffer.sample:")
-        logger.debug(f"Batch size: {batch_size}")
-        logger.debug(f"Number of experiences in buffer: {len(self.buffer)}")
-        logger.debug(f"Sampled states:{states.shape}\n {states}")
-        logger.debug(f"Sampled actions:{actions.shape}\n {actions}")
-        logger.debug(f"Sampled rewards:{rewards.shape}\n {rewards}")
-        logger.debug(f"Sampled next_states:{next_states.shape}\n {next_states}")
-        logger.debug(f"Sampled dones:{dones.shape}\n {dones}")
+        # logger.debug("Debugging ReplayBuffer.sample:")
+        # logger.debug(f"Batch size: {batch_size}")
+        # logger.debug(f"Number of experiences in buffer: {len(self.buffer)}")
+        # logger.debug(f"Sampled states:{states.shape}\n {states}")
+        # logger.debug(f"Sampled actions:{actions.shape}\n {actions}")
+        # logger.debug(f"Sampled rewards:{rewards.shape}\n {rewards}")
+        # logger.debug(f"Sampled next_states:{next_states.shape}\n {next_states}")
+        # logger.debug(f"Sampled dones:{dones.shape}\n {dones}")
 
-        for i, state in enumerate(states):
-            logger.debug(f"State {i} shape: {np.array(state).shape}")
-        return states, actions, rewards, next_states, dones
+        states_tf = tf.convert_to_tensor(states, dtype=tf.float16)
+        actions_tf = tf.convert_to_tensor(actions, dtype=tf.int16)
+        rewards_tf = tf.convert_to_tensor(rewards, dtype=tf.float16)
+        next_states_tf = tf.convert_to_tensor(next_states, dtype=tf.float16)
+        dones_tf = tf.convert_to_tensor(dones, dtype=tf.float16)
+        return states_tf, actions_tf, rewards_tf, next_states_tf, dones_tf
 
     def __len__(self):
         """Returns the current size of the buffer."""
@@ -117,11 +120,11 @@ class DQNAgent:
             else 0
         )  # Linear decay
         self.buffer_size = config.get("replay_buffer_size", 10000)
-        self.batch_size = config.get("batch_size", 32)
+        self.batch_size = config.get("batch_size", 128)
         self.target_update_frequency = config.get(
             "target_update_frequency", 1000
         )  # number of learning steps
-        self.nn_layers = config.get("nn_layers", [128, 128])  # hidden layer sizes
+        self.nn_layers = config.get("nn_layers", [64, 64])  # hidden layer sizes
 
         self.online_network = self.build_simple_q_network(
             self.state_size, self.action_size, self.nn_layers
@@ -318,7 +321,7 @@ class DQNAgent:
         )
         self.replay_buffer.add(experience)
 
-    @tf.function
+    @tf.function(reduce_retracing=True)
     def learn(self):
         """
         Performs a learning update step using a batch of experiences from the replay buffer.
@@ -327,15 +330,9 @@ class DQNAgent:
         if len(self.replay_buffer) < self.batch_size:
             return  # Not enough data yet
 
-        states_np, actions_np, rewards_np, next_states_np, dones_np = (
+        states_tf, actions_tf, rewards_tf, next_states_tf, dones_tf = (
             self.replay_buffer.sample(self.batch_size)
         )
-
-        states_tf = tf.convert_to_tensor(states_np, dtype=tf.float16)
-        actions_tf = tf.convert_to_tensor(actions_np, dtype=tf.int8)
-        rewards_tf = tf.convert_to_tensor(rewards_np, dtype=tf.float16)
-        next_states_tf = tf.convert_to_tensor(next_states_np, dtype=tf.float16)
-        dones_tf = tf.convert_to_tensor(dones_np, dtype=tf.int8)
 
         # Get max predicted Q-value for the next states from the target network
         max_next_q = tf.reduce_max(self.target_network(next_states_tf), axis=1)
@@ -382,7 +379,7 @@ class DQNAgent:
             f"Agent {self.agent_id}: Target network updated at learn step {self.learn_step_counter}"
         )
 
-    @tf.function
+    @tf.function(reduce_retracing=True)
     def update_target_network_soft(self):
         """Performs soft update of target network weights."""
         online_weights = self.online_network.variables

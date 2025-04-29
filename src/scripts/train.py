@@ -55,7 +55,7 @@ EPISODES = 5
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 1.0
 ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
-MAX_SIM_TIME = 3600
+MAX_SIM_TIME = 2400
 
 
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
@@ -137,7 +137,7 @@ run = wandb.init(
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=90, mode="online"),
+    settings=wandb.Settings(init_timeout=90, mode="offline"),
 )
 
 
