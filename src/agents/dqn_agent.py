@@ -148,6 +148,7 @@ class DQNAgent:
             0  # Total environment steps across all episodes for this agent
         )
         self.learn_step_counter = 0  # Number of times learn() has been called
+        self.tensorboard_writer = tf.summary.create_file_writer(f"logs/{self.agent_id}")
 
     def build_simple_q_network(self, input_shape, output_shape, hidden_layers):
         """
@@ -253,9 +254,11 @@ class DQNAgent:
         Returns:
             int: The chosen action index (0-3).
         """
-        # Decay epsilon (linear decay)
-        if self.epsilon > self.epsilon_min:
-            self.epsilon -= self.epsilon_decay_rate
+        # Decay epsilon
+        if self.global_step_count < 30000:
+            self.epsilon = 1.0
+        elif self.epsilon > self.epsilon_min:
+            self.epsilon = max(0.01, 1.0 * np.exp(-(self.global_step_count - 30000) / 60000))
 
         if np.random.rand() < self.epsilon:
             # Explore: Choose a random action
@@ -351,8 +354,19 @@ class DQNAgent:
 
         self.learn_step_counter += 1
 
+        q_values_mean = tf.reduce_mean(q_values_all).numpy()
+        q_values_std = tf.math.reduce_std(q_values_all).numpy()
+        action_distribution = tf.reduce_sum(tf.one_hot(actions_tf, self.action_size), axis=0).numpy()
+
+        with self.tensorboard_writer.as_default():
+            tf.summary.scalar("loss", loss, step=self.learn_step_counter)
+            tf.summary.scalar("epsilon", self.epsilon, step=self.learn_step_counter)
+            tf.summary.scalar("q_values_mean", q_values_mean, step=self.learn_step_counter)
+            tf.summary.scalar("q_values_std", q_values_std, step=self.learn_step_counter)
+            tf.summary.histogram("action_distribution", action_distribution, step=self.learn_step_counter)
+
         # Soft updates
-        self.update_target_network_soft()
+        # self.update_target_network_soft()
 
         # Hard updates
         if self.learn_step_counter % self.target_update_frequency == 0:

@@ -51,7 +51,7 @@ SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3.net.xml"
 baseline = None
 
-EPISODES = 10
+EPISODES = 40
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 1.0
 ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
@@ -142,7 +142,7 @@ run = wandb.init(
 
 
 class SmoothedValue:
-    def __init__(self, alpha=0.90):
+    def __init__(self, alpha=0.99):
         self.alpha = alpha
         self.value = None
 
@@ -300,7 +300,7 @@ def train_agents():
     run.finish()
 
 
-smooth_global_reward = SmoothedValue(alpha=0.90)
+smooth_global_reward = SmoothedValue(alpha=0.99)
 
 if __name__ == "__main__":
     train_agents()
