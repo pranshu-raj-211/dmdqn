@@ -11,6 +11,12 @@ DIRECTION_ORDER = {"n": 0, "s": 1, "e": 2, "w": 3, "unknown": 4, "error": 5}
 SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3.net.xml"
 PORT = 8813
+PHASE_ENCODING = {
+    0:[1, 0,0,0],
+    1:[0,1,0,0],
+    2:[0,0,1,0],
+    3:[0,0,0,1]
+}
 
 
 if "SUMO_HOME" in os.environ:
@@ -428,8 +434,7 @@ def get_own_state(
     current_sim_time: float,
 ) -> list[float]:
     """Get state of a single junction."""
-    block_size = (4 * max_lanes_per_direction) + 2
-    queue_block_size = 4 * max_lanes_per_direction
+    block_size = 4 * max_lanes_per_direction
 
     state_block = [-1.0] * block_size
 
@@ -447,7 +452,7 @@ def get_own_state(
             flat_index = (dir_list_index * max_lanes_per_direction) + lane_idx_in_list
 
             # add queue size for each lane to local state
-            if flat_index < queue_block_size:
+            if flat_index < block_size:
                 try:
                     queue_value = traci.lane.getLastStepHaltingNumber(lane_id)
                     state_block[flat_index] = float(queue_value)
@@ -462,7 +467,8 @@ def get_own_state(
     try:
         if traci.junction.getType(junction_id) == "traffic_light":
             current_phase = traci.trafficlight.getPhase(junction_id)
-            phase = float(current_phase)
+            # one hot encode phase, zeros for padding
+            phase = PHASE_ENCODING.get(current_phase, default=[0,0,0,0])
 
             try:
                 next_switch_time = traci.trafficlight.getNextSwitch(junction_id)
@@ -485,8 +491,10 @@ def get_own_state(
     except Exception:
         pass
 
-    state_block[queue_block_size] = phase
-    state_block[queue_block_size + 1] = time_spent
+    state_block.extend(phase)
+    state_block.append(time_spent)
+
+    assert len(state_block) == 17, "Local state size unexpected"
 
     return state_block
 
@@ -504,7 +512,7 @@ def build_state_vector(
     This includes local state, neighbor presence vector, neighbor local states.
     """
     max_lanes_per_direction = 3
-    block_size = (4 * max_lanes_per_direction) + 2
+    block_size = (4 * max_lanes_per_direction) + 5
     padding_block = [-1.0] * block_size
 
     # junction validity check
@@ -515,18 +523,16 @@ def build_state_vector(
     ):
         return [-1.0] * (block_size + 4 + (4 * block_size))
 
-    own_state = np.array(get_own_state(
+    state_vector = get_own_state(
         junction_id,
         structured_junction_lane_map,
         max_lanes_per_direction,
         current_sim_time,
-    ), dtype=np.float32)
-
-    state_vector = own_state.tolist()
+    )
 
     presence_vector, neighbor_id_list = _get_neighbor_info(junction_id, tl_junctions)
 
-    state_vector.extend([float(p) for p in presence_vector])
+    state_vector.extend(presence_vector)
 
     # logger.debug(f"Building state vector for junction {junction_id}")
     # logger.debug(f"Own state size: {len(own_state)}")
@@ -545,7 +551,7 @@ def build_state_vector(
         state_vector.extend(nbr_state.tolist())
 
     logger.debug(f'{junction_id}: state vector length {len(state_vector)}')
-    assert len(state_vector) == 74, f"Unexpected state vector length {len(state_vector)}"
+    assert len(state_vector) == 89, f"Unexpected state vector length {len(state_vector)}"
     return np.array(state_vector)
 
 
@@ -591,7 +597,7 @@ def get_full_junction_state(
                                  approach direction has in the network (e.g., 3).
 
     Returns:
-        A list of floats representing the padded state vector (74 elements if max_lanes=3).
+        A list of floats representing the padded state vector (89 elements if max_lanes=3).
         Returns a vector initialized with padding (-1.0) if the current_junction_id
         is invalid, not a TL, or not in the lane map.
     """

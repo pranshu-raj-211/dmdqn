@@ -96,13 +96,13 @@ class DQNAgent:
         Initializes the DQN Agent.
 
         Args:
-            state_size (int): Dimension of the input state vector (e.g., 74).
+            state_size (int): Dimension of the input state vector (e.g., 89).
             action_size (int): Number of possible discrete actions (4).
             agent_id (str): Unique identifier for this agent (junction ID).
             config (dict): Dictionary of agent hyperparameters.
         """
         self.agent_id = agent_id
-        self.state_size = 74
+        self.state_size = 89
         self.action_size = 4
 
         # Hyperparameters
@@ -270,9 +270,9 @@ class DQNAgent:
 
     def _split_state_tensor(self, state_tensor):
         """Helper to split the concatenated state tensor for the branching network."""
-        # Assumes state_tensor shape is [batch_size, 74]
+        # Assumes state_tensor shape is [batch_size, 89]
         # Need to slice the tensor according to the state vector structure
-        # [local_queues(12), local_signal(2), presence(4), neighbor_N(14), E(14), S(14), W(14)]
+        # [local_queues(12), local_signal(5), presence(4), neighbor_N(17), E(17), S(17), W(17)]
         start = 0
         local_queues = state_tensor[:, start : start + 12]
         start += 12
@@ -319,7 +319,6 @@ class DQNAgent:
         )
         self.replay_buffer.add(experience)
 
-
     @tf.function
     def learn(self):
         """
@@ -333,11 +332,11 @@ class DQNAgent:
             self.replay_buffer.sample(self.batch_size)
         )
 
-        states_tf = tf.convert_to_tensor(states_np, dtype=tf.float32)
-        actions_tf = tf.convert_to_tensor(actions_np, dtype=tf.int32)
-        rewards_tf = tf.convert_to_tensor(rewards_np, dtype=tf.float32)
-        next_states_tf = tf.convert_to_tensor(next_states_np, dtype=tf.float32)
-        dones_tf = tf.convert_to_tensor(dones_np, dtype=tf.float32)
+        states_tf = tf.convert_to_tensor(states_np, dtype=tf.float16)
+        actions_tf = tf.convert_to_tensor(actions_np, dtype=tf.int8)
+        rewards_tf = tf.convert_to_tensor(rewards_np, dtype=tf.float16)
+        next_states_tf = tf.convert_to_tensor(next_states_np, dtype=tf.float16)
+        dones_tf = tf.convert_to_tensor(dones_np, dtype=tf.int8)
 
         # Get max predicted Q-value for the next states from the target network
         max_next_q = tf.reduce_max(self.target_network(next_states_tf), axis=1)
@@ -358,9 +357,7 @@ class DQNAgent:
 
             # Select the predicted Q-values ONLY for the actions that were actually taken
             # Use tf.gather or tf.one_hot and tf.reduce_sum
-            indices = tf.stack(
-                [tf.range(self.batch_size), actions_tf], axis=1
-            )
+            indices = tf.stack([tf.range(self.batch_size), actions_tf], axis=1)
             predicted_q_for_taken_actions = tf.gather_nd(all_predicted_q, indices)
             loss = self.loss_fn(target_q_values, predicted_q_for_taken_actions)
 
@@ -370,9 +367,12 @@ class DQNAgent:
         )
         self.learn_step_counter += 1
 
-        # Update target network weights
-        if self.learn_step_counter % self.target_update_frequency == 0:
-            self.update_target_network()
+        # Soft updates
+        self.update_target_network_soft()
+
+        # Hard updates
+        # if self.learn_step_counter % self.target_update_frequency == 0:
+        #     self.update_target_network()
 
         return loss
 
@@ -382,6 +382,18 @@ class DQNAgent:
         logger.info(
             f"Agent {self.agent_id}: Target network updated at learn step {self.learn_step_counter}"
         )
+
+    @tf.function
+    def update_target_network_soft(self):
+        """Performs soft update of target network weights."""
+        online_weights = self.online_network.variables
+        target_weights = self.target_network.variables
+
+        for i in range(len(target_weights)):
+            # In-place update using tf.Variable.assign()
+            target_weights[i].assign(
+                self.tau * online_weights[i] + (1.0 - self.tau) * target_weights[i]
+            )
 
     def save_model(self, filepath):
         """Saves the weights of the online network."""
@@ -397,9 +409,7 @@ class DQNAgent:
         """Loads weights into the online network (and target network)."""
         try:
             self.online_network.load_weights(filepath)
-            self.target_network.set_weights(
-                self.online_network.get_weights()
-            )
+            self.target_network.set_weights(self.online_network.get_weights())
             logger.info(f"Agent {self.agent_id}: Model weights loaded from {filepath}")
             return True
         except Exception as e:

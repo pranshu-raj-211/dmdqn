@@ -58,6 +58,7 @@ ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
 MAX_SIM_TIME = 3600
 
 
+tf.keras.mixed_precision.set_global_policy('mixed_float16')
 gpus = tf.config.list_physical_devices("GPU")
 if gpus:
     try:
@@ -112,16 +113,16 @@ def create_agents(tl_junctions):
         "gamma": 0.99,
         "epsilon_start": 1.0,
         "epsilon_min": 0.01,
-        "epsilon_decay_steps": 100000,
+        "epsilon_decay_steps": 200000,
         "replay_buffer_size": 10000,
-        "batch_size": 32,
+        "batch_size": 128,
         "target_update_frequency": 500,
         "nn_layers": [128, 128],
     }
 
     for junction_id in tl_junctions:
         agents[junction_id] = DQNAgent(
-            state_size=74, action_size=4, agent_id=junction_id, config=agent_config
+            state_size=89, action_size=4, agent_id=junction_id, config=agent_config
         )
     return agents
 
