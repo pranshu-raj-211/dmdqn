@@ -334,41 +334,29 @@ class DQNAgent:
             self.replay_buffer.sample(self.batch_size)
         )
 
-        # Get max predicted Q-value for the next states from the target network
-        max_next_q = tf.reduce_max(self.target_network(next_states_tf), axis=1)
-        # If using the branching network:
-        # max_next_q = tf.reduce_max(self.target_network(self._split_state_tensor(next_states_tf)), axis=1)
+        # Double DQN: use online network for action selection, target for evaluation
+        next_actions = tf.argmax(self.online_network(next_states_tf), axis=1)
+        indices = tf.stack([tf.range(self.batch_size), next_actions], axis=1)
+        target_q_values = tf.gather_nd(self.target_network(next_states_tf), indices)
 
-        # Calculate the target Q value using the Bellman equation
-        # Target Q = R + gamma * max_Q(s', a') * (1 - done)
-        target_q_values = rewards_tf + self.gamma * max_next_q * (1 - dones_tf)
+        targets = rewards_tf + self.gamma * (1.0 - dones_tf) * target_q_values
 
-        # Use GradientTape to record operations for automatic differentiation
         with tf.GradientTape() as tape:
-            # Get predicted Q-values for the current states from the online network
-            # If using the simple network:
-            all_predicted_q = self.online_network(states_tf)  # Shape [batch_size, 4]
-            # If using the branching network:
-            # all_predicted_q = self.online_network(self._split_state_tensor(states_tf))
+            q_values_all = self.online_network(states_tf)
+            predicted_q = tf.reduce_sum(q_values_all * tf.one_hot(actions_tf, self.num_actions), axis=1)
+            loss = tf.keras.losses.MeanSquaredError()(targets, predicted_q)
 
-            # Select the predicted Q-values ONLY for the actions that were actually taken
-            # Use tf.gather or tf.one_hot and tf.reduce_sum
-            indices = tf.stack([tf.range(self.batch_size), actions_tf], axis=1)
-            predicted_q_for_taken_actions = tf.gather_nd(all_predicted_q, indices)
-            loss = self.loss_fn(target_q_values, predicted_q_for_taken_actions)
+        grads = tape.gradient(loss, self.online_network.trainable_variables)
+        self.optimizer.apply_gradients(zip(grads, self.online_network.trainable_variables))
 
-        gradients = tape.gradient(loss, self.online_network.trainable_variables)
-        self.optimizer.apply_gradients(
-            zip(gradients, self.online_network.trainable_variables)
-        )
         self.learn_step_counter += 1
 
         # Soft updates
         self.update_target_network_soft()
 
         # Hard updates
-        # if self.learn_step_counter % self.target_update_frequency == 0:
-        #     self.update_target_network()
+        if self.learn_step_counter % self.target_update_frequency == 0:
+            self.update_target_network()
 
         return loss
 
