@@ -125,6 +125,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "keras" },
+    { name = "tensorboard" },
     { name = "tensorflow", extra = ["and-cuda"] },
     { name = "traci" },
     { name = "wandb" },
@@ -133,6 +134,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "keras", specifier = ">=3.9.2" },
+    { name = "tensorboard", specifier = ">=2.19.0" },
     { name = "tensorflow", extras = ["and-cuda"], specifier = ">=2.19.0" },
     { name = "traci", specifier = ">=1.22.0" },
     { name = "wandb", specifier = ">=0.19.9" },

@@ -53,12 +53,12 @@ baseline = None
 
 EPISODES = 40
 MAX_LANES_PER_DIRECTION = 3
-STEP_DURATION = 1.0
+STEP_DURATION = 10.0
 ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
 MAX_SIM_TIME = 2400
 
 
-tf.keras.mixed_precision.set_global_policy('mixed_float16')
+tf.keras.mixed_precision.set_global_policy("mixed_float16")
 gpus = tf.config.list_physical_devices("GPU")
 if gpus:
     try:
@@ -151,7 +151,7 @@ class SmoothedValue:
             self.value = new_val
         else:
             self.value = self.alpha * new_val + (1 - self.alpha) * self.value
-    
+
     def get_value(self):
         return self.value
 
@@ -203,9 +203,11 @@ def train_agents():
         done = 0
         total_reward = 0
         step_count = 0
+        # take a step in an episode (move simulation forward one step)
         while not done:
             actions = dict()
             state_dict = dict()
+            # get initial observations
             for junction_id, agent in agents.items():
                 state = build_state_vector(
                     junction_id=junction_id,
@@ -223,6 +225,7 @@ def train_agents():
             for junction_id, action in actions.items():
                 traci.trafficlight.setPhase(junction_id, ACTION_MAP[action])
 
+            # take sim steps till you the step duration has passed
             target_time = current_time + STEP_DURATION
             while current_time < target_time:
                 traci.simulationStep()
@@ -237,6 +240,7 @@ def train_agents():
             rewards = dict()
             global_reward = calculate_global_reward(global_state, next_global_state)
             smooth_global_reward.update(global_reward)
+            # get next state, rewards
             for junction in tl_junctions:
                 next_global_state[junction] = get_own_state(
                     junction_id=junction,
@@ -248,12 +252,10 @@ def train_agents():
                     global_state[junction], next_global_state[junction]
                 )
                 rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
-            total_reward = global_reward
+            total_reward = sum(rewards.values())
+            smooth_total_reward.update(total_reward)
 
-            logger.info(
-                f"Step: {step_count}, global_reward: {global_reward}, total reward: {total_reward}"
-            )
-
+            # build next set of observations
             next_state_dict = dict()
             for junction_id, agent in agents.items():
                 state = build_state_vector(
@@ -277,8 +279,9 @@ def train_agents():
                     done,
                 )
                 loss = agent.replay()
+            # global rewards are sum of queues for all network, total are reward combination applied
             logger.info(
-                f"Episode: {episode}, Step: {step_count}, loss: {loss}, global_reward: {global_reward}"
+                f"Episode: {episode}, Step: {step_count}, loss: {loss}, global_reward: {global_reward}, total_reward: {total_reward}"
             )
             run.log(
                 {
@@ -286,14 +289,16 @@ def train_agents():
                     "step": step_count,
                     "loss": loss,
                     "global_reward": global_reward,
-                    'smooth_global_reward':smooth_global_reward.get_value(),
+                    "total_reward": total_reward,
+                    "smooth_global_reward": smooth_global_reward.get_value(),
+                    "smooth_total_reward": smooth_total_reward.get_value(),
                 }
             )
 
             global_state = next_global_state
             step_count += 1
 
-        run.log({"episode": episode + 1, "total_reward": total_reward})
+        # run.log({"episode": episode + 1, "total_reward": total_reward})
         logger.info(f"Episode {episode + 1} complete. Total Reward: {total_reward}")
 
     traci.close()
@@ -301,6 +306,7 @@ def train_agents():
 
 
 smooth_global_reward = SmoothedValue(alpha=0.99)
+smooth_total_reward = SmoothedValue(alpha=0.99)
 
 if __name__ == "__main__":
     train_agents()
