@@ -351,7 +351,7 @@ class DQNAgent:
             predicted_q = tf.reduce_sum(q_values_all * tf.one_hot(actions_tf, self.action_size, dtype=tf.float32), axis=1)
             loss = tf.keras.losses.MeanSquaredError()(targets, predicted_q)
 
-        # logger.warning(f"Loss value after backprop {loss}")
+        # logger.info(f"Loss value before backprop {loss}")
 
         grads = tape.gradient(loss, self.online_network.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.online_network.trainable_variables))
@@ -376,6 +376,7 @@ class DQNAgent:
         if self.learn_step_counter % self.target_update_frequency == 0:
             self.update_target_network()
 
+        # logger.info(f"Loss before sending: {loss}")
         return loss
 
     def update_target_network(self):
@@ -420,10 +421,14 @@ class DQNAgent:
             )
             return False
 
-    def get_epsilon(self):
+    def get_epsilon(self) -> float:
         """Returns the current epsilon value."""
         return self.epsilon
 
-    def replay(self):
+    def replay(self) -> float:
         """Performs a learning step using experiences from the replay buffer."""
-        self.learn()
+        loss = self.learn()
+        if loss is None:
+            return 0 # workaround, in case replay buffer is not filled.
+        # todo: do the replay buffer check in training script as well, to prevent this
+        return loss

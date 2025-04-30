@@ -270,6 +270,7 @@ def train_agents():
                 next_state_dict[junction_id] = state_tensor
 
             # Train agents
+            total_loss: float = 0.0
             for junction_id, agent in agents.items():
                 agent.remember(
                     state_dict[junction_id],
@@ -279,15 +280,25 @@ def train_agents():
                     done,
                 )
                 loss = agent.replay()
+                # logger.info(f"loss:{loss}, agent:{junction_id}")
+                run.log(
+                    {
+                        "episode": episode,
+                        "step": step_count,
+                        "junction": junction_id,
+                        "loss_agent": loss,
+                    }
+                )
+                total_loss += loss
             # global rewards are sum of queues for all network, total are reward combination applied
             logger.info(
-                f"Episode: {episode}, Step: {step_count}, loss: {loss}, global_reward: {global_reward}, total_reward: {total_reward}"
+                f"Episode: {episode}, Step: {step_count}, global_reward: {global_reward}, total_reward: {total_reward}, total_loss: {total_loss}"
             )
             run.log(
                 {
                     "episode": episode,
                     "step": step_count,
-                    "loss": loss,
+                    "total_loss": total_loss,
                     "global_reward": global_reward,
                     "total_reward": total_reward,
                     "smooth_global_reward": smooth_global_reward.get_value(),
@@ -299,7 +310,7 @@ def train_agents():
             step_count += 1
 
         # run.log({"episode": episode + 1, "total_reward": total_reward})
-        logger.info(f"Episode {episode + 1} complete. Total Reward: {total_reward}")
+        logger.info(f"Episode {episode + 1} complete. Total Reward: {total_reward}, loss: {total_loss}")
 
     traci.close()
     run.finish()
