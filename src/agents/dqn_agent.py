@@ -17,8 +17,8 @@ updates to the target network and other utilities like model saving and loading.
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import initializers
-from tensorflow.keras.layers import Dense, Input, Concatenate
+from tensorflow.keras import initializers # type: ignore
+from tensorflow.keras.layers import Dense, Input, Concatenate # type: ignore
 from collections import deque
 import random
 from log_config import logger
@@ -77,11 +77,11 @@ class ReplayBuffer:
         # logger.debug(f"Sampled next_states:{next_states.shape}\n {next_states}")
         # logger.debug(f"Sampled dones:{dones.shape}\n {dones}")
 
-        states_tf = tf.convert_to_tensor(states, dtype=tf.float16)
-        actions_tf = tf.convert_to_tensor(actions, dtype=tf.int16)
-        rewards_tf = tf.convert_to_tensor(normalized_rewards, dtype=tf.float16)
-        next_states_tf = tf.convert_to_tensor(next_states, dtype=tf.float16)
-        dones_tf = tf.convert_to_tensor(dones, dtype=tf.float16)
+        states_tf = tf.convert_to_tensor(states, dtype=tf.float32)
+        actions_tf = tf.convert_to_tensor(actions, dtype=tf.int32)
+        rewards_tf = tf.convert_to_tensor(normalized_rewards, dtype=tf.float32)
+        next_states_tf = tf.convert_to_tensor(next_states, dtype=tf.float32)
+        dones_tf = tf.convert_to_tensor(dones, dtype=tf.float32)
         return states_tf, actions_tf, rewards_tf, next_states_tf, dones_tf
 
     def __len__(self):
@@ -323,31 +323,35 @@ class DQNAgent:
             f"At agent training: state shape {state.shape}, next_state shape {next_state.shape}"
         )
         self.replay_buffer.add(experience)
+        # logger.warning(f'Replay buffer size: {self.replay_buffer.__len__()}, {self.agent_id}')
 
-    @tf.function(reduce_retracing=True)
     def learn(self):
         """
         Performs a learning update step using a batch of experiences from the replay buffer.
         """
         # Only learn if enough experiences are in the buffer
-        if len(self.replay_buffer) < self.batch_size:
+        if self.replay_buffer.__len__() < self.batch_size:
+            # logger.warning(f"Not enough samples in buffer: {self.replay_buffer.__len__()}, decrease batch size: {self.batch_size}, {self.global_step_count}")
             return  # Not enough data yet
-
+        # logger.info(f'Num samples {self.replay_buffer.__len__()}')
         states_tf, actions_tf, rewards_tf, next_states_tf, dones_tf = (
             self.replay_buffer.sample(self.batch_size)
         )
 
         # Double DQN: use online network for action selection, target for evaluation
-        next_actions = tf.argmax(self.online_network(next_states_tf), axis=1)
+        next_actions = tf.argmax(self.online_network(next_states_tf), axis=1, output_type=tf.int32)
         indices = tf.stack([tf.range(self.batch_size), next_actions], axis=1)
         target_q_values = tf.gather_nd(self.target_network(next_states_tf), indices)
+        target_q_values = tf.cast(target_q_values, dtype=tf.float32)
 
         targets = rewards_tf + self.gamma * (1.0 - dones_tf) * target_q_values
 
         with tf.GradientTape() as tape:
-            q_values_all = self.online_network(states_tf)
-            predicted_q = tf.reduce_sum(q_values_all * tf.one_hot(actions_tf, self.num_actions), axis=1)
+            q_values_all = tf.cast(self.online_network(states_tf), tf.float32)
+            predicted_q = tf.reduce_sum(q_values_all * tf.one_hot(actions_tf, self.action_size, dtype=tf.float32), axis=1)
             loss = tf.keras.losses.MeanSquaredError()(targets, predicted_q)
+
+        # logger.warning(f"Loss value after backprop {loss}")
 
         grads = tape.gradient(loss, self.online_network.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.online_network.trainable_variables))
