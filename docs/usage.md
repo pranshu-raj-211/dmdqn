@@ -2,8 +2,14 @@
 
 ## Generating files for new network
 
-Build a network in netedit or use the netrouter command to build one for you. Save this in an appropriate directory.
+Build a network in netedit or use the netgenerate command to build one for you. Save this in an appropriate directory.
 
+```bash
+netgenerate --grid --grid.x-number 3 --grid.y-number 3 --grid.attach-length 100 --grid.x-length 400 --grid.y-length 400 --tls.guess --default.lanenumber 3 --lefthand --output-file grid_3x3_lht.net.xml
+```
+
+Use netedit to make additional changes.
+`netedit grid_3x3_lht.net.xml`
 
 After this we need to generate trips, so that we can simulate traffic.
 In the directory where the network file was saved:

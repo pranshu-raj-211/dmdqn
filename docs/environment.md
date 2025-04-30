@@ -97,3 +97,7 @@ This section outlines the naming conventions used for nodes (junctions/dead ends
 
     - Format: FromNodeID_to_ToNodeID
     - Example: J_0_0_to_J_0_1 (southbound edge from J_0_0 to J_0_1), J_2_2_to_End_S_2_2 (southbound edge from J_2_2 to the south boundary).
+
+4. **Lane IDs:**
+    Edge id + '_i' where i is an integer (in our case - 0, 1 or 2).
+    Left most lane of edge has suffix _0, middle _1, right _2.
