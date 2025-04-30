@@ -255,10 +255,10 @@ class DQNAgent:
             int: The chosen action index (0-3).
         """
         # Decay epsilon
-        if self.global_step_count < 30000:
+        if self.global_step_count < 8000:
             self.epsilon = 1.0
         elif self.epsilon > self.epsilon_min:
-            self.epsilon = max(0.01, 1.0 * np.exp(-(self.global_step_count - 30000) / 60000))
+            self.epsilon = max(0.01, 1.0 * np.exp(-(self.global_step_count - 8000) / 16000))
 
         if np.random.rand() < self.epsilon:
             # Explore: Choose a random action
