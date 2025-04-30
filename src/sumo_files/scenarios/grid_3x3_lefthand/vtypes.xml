@@ -1,0 +1,6 @@
+<vTypes>
+    <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="2.0" minGap="1.0" maxSpeed="30" guiShape="passenger"/>
+    <vType id="truck" accel="1.5" decel="4.5" sigma="0.5" length="5.0" minGap="1.0" maxSpeed="20" guiShape="truck"/>
+    <vType id="motorcycle" accel="3.0" decel="5.0" sigma="0.5" length="1.0" minGap="1.0" maxSpeed="40" guiShape="motorcycle"/>
+    <vType id="bus" accel="2.0" decel="4.0" sigma="0.5" length="5.0" minGap="1.0" maxSpeed="25" guiShape="bus"/>
+</vTypes>
