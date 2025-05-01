@@ -1,12 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
-    <vTypes>
-        <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="2.0" minGap="1.0" maxSpeed="30" guiShape="passenger" />
-        <vType id="truck" accel="1.5" decel="4.5" sigma="0.5" length="5.0" minGap="1.0" maxSpeed="20" guiShape="truck" />
-        <vType id="motorcycle" accel="3.0" decel="5.0" sigma="0.5" length="1.0" minGap="1.0" maxSpeed="40" guiShape="motorcycle" />
-        <vType id="bus" accel="2.0" decel="4.0" sigma="0.5" length="5.0" minGap="1.0" maxSpeed="25" guiShape="bus" />
-    </vTypes>
-    
+
+    <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="2.0" minGap="1.0" maxSpeed="30" guiShape="passenger" />
+    <vType id="truck" accel="1.5" decel="4.5" sigma="0.5" length="5.0" minGap="1.0" maxSpeed="20" guiShape="truck" />
+    <vType id="motorcycle" accel="3.0" decel="5.0" sigma="0.5" length="1.0" minGap="1.0" maxSpeed="40" guiShape="motorcycle" />
+    <vType id="bus" accel="2.0" decel="4.0" sigma="0.5" length="5.0" minGap="1.0" maxSpeed="25" guiShape="bus" />
+
     <trip id="0" depart="0.00" from="J_1_1_to_J_1_0" to="J_0_0_to_END_N_J_0_0" type="motorcycle" />
     <trip id="1" depart="1.00" from="END_W_J_0_0_to_J_0_0" to="J_0_2_to_END_E_J_0_2" type="truck" />
     <trip id="2" depart="2.00" from="J_1_2_to_J_0_2" to="J_2_0_to_" type="bus" />
