@@ -209,7 +209,6 @@ def get_queue_length_junction(ordered_junction_lane_map: dict):
 def greedy_baseline():
     """Selects actions for traffic lights based on the direction with the most vehicles."""
     set_seeds(42)
-    # QUEUE_PHASE_MAP = {0:2, 1:0, 2:1, 3:3}
     tl_junctions, ordered_junction_lane_map = initialize_environment()
 
     for episode in range(EPISODES):
@@ -236,13 +235,9 @@ def greedy_baseline():
                     sum(traci.lane.getLastStepHaltingNumber(lane) for lane in direction)
                     for direction in direction_lanes
                 ]
-                # queues in nsew order confirmed
                 queue_lengths[junction] = direction_queues
-                logger.info(f'Junction: {junction}, queues:{queue_lengths[junction]}')
-
                 # phases should be made nsew in the net, for ease of work
                 max_queue_index = np.argmax(direction_queues)
-                logger.info(f'queue index:{max_queue_index}')
                 traci.trafficlight.setPhase(junction, max_queue_index)
 
             # Step simulation until the next action time
