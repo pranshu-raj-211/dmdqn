@@ -21,7 +21,7 @@ baseline = None
 
 EPISODES = 1
 MAX_LANES_PER_DIRECTION = 3
-STEP_DURATION = 20.0
+STEP_DURATION = 7.0
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
 MAX_SIM_TIME = 3600
 
@@ -54,7 +54,8 @@ def load_config(agent_yaml_path, env_yaml_path):
 
 
 def initialize_environment():
-    traci.start(["sumo", "-c", SUMO_CFG_PATH])
+    """Starts SUMO with appropriate flags, returns junctions, junction-lane mapping."""
+    traci.start(["sumo-gui", "-c", SUMO_CFG_PATH])
     tl_junctions = get_traffic_light_junction_ids_and_net_sumolib(SUMO_NET_PATH)
     all_lanes = traci.lane.getIDList()
     non_internal_lanes = [lane for lane in all_lanes if not lane.startswith(":")]
@@ -74,7 +75,7 @@ run = wandb.init(
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=90, mode="online"),
+    settings=wandb.Settings(init_timeout=90, mode="offline"),
 )
 
 
@@ -176,7 +177,7 @@ def random_baseline():
                 )
                 rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
             total_reward = sum(rewards.values())
-            logger.warning(f'step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}')
+            # logger.warning(f'step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}')
             smooth_total_reward.update(total_reward)
             smooth_global_reward.update(global_reward)
             run.log(
@@ -205,28 +206,127 @@ def get_queue_length_junction(ordered_junction_lane_map: dict):
     return queue_lengths_map
 
 
+def greedy_baseline():
+    """Selects actions for traffic lights based on the direction with the most vehicles."""
+    set_seeds(42)
+    tl_junctions, ordered_junction_lane_map = initialize_environment()
+
+    for episode in range(EPISODES):
+        current_time = traci.simulation.getTime()
+        done = False
+        step_count = 0
+
+        while not done:
+            for tl in tl_junctions:
+                # Get queue lengths for each direction
+                queue_lengths = []
+                for direction_lanes in ordered_junction_lane_map[tl]:
+                    queue_length = sum(traci.lane.getLastStepHaltingNumber(lane) for lane in direction_lanes)
+                    queue_lengths.append(queue_length)
+
+                # Select the phase corresponding to the direction with the most vehicles
+                max_queue_index = np.argmax(queue_lengths)
+                traci.trafficlight.setPhase(tl, max_queue_index)
+
+            # Step simulation until the next action time
+            target_time = current_time + STEP_DURATION
+            while current_time < target_time:
+                traci.simulationStep()
+                current_time = traci.simulation.getTime()
+                done = (
+                    traci.simulation.getMinExpectedNumber() == 0
+                    or current_time >= MAX_SIM_TIME
+                )
+
+            step_count += 1
+
+    traci.close()
+    logger.info("Greedy baseline simulation completed.")
+
+
 def timed_baseline():
     """Cycles through traffic light phases with fixed durations."""
     set_seeds(42)  # Ensure reproducibility
-    tl_junctions, _ = initialize_environment()
+    NUM_PHASES = 4
+    global_state = dict()
+    tl_junctions, ordered_junction_lane_map = initialize_environment()
+    # ! do not use step duration equal to or factor of traffic light duration (20). 
+    # Will cause skipping phases - unintended consequence.
 
-    phase_durations = [10, 10, 10, 10]  # Example fixed durations for 4 phases
+    for episode in range(EPISODES):
+        current_time = traci.simulation.getTime()
+        done = False
+        step_count = 0
 
-    for step in range(int(MAX_SIM_TIME / STEP_DURATION)):
-        for tl in tl_junctions:
-            current_phase = traci.trafficlight.getPhase(tl)
-            next_phase = (current_phase + 1) % len(phase_durations)
-            traci.trafficlight.setPhase(tl, next_phase)
-        traci.simulationStep()
+        for junction in tl_junctions:
+            global_state[junction] = get_own_state(
+                junction_id=junction,
+                structured_junction_lane_map=ordered_junction_lane_map,
+                max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
+                current_sim_time=current_time,
+            )
+
+        while not done:
+            phases = []
+            for tl in tl_junctions:
+                current_phase = traci.trafficlight.getPhase(tl)
+                next_phase = (current_phase + 1) % NUM_PHASES
+                logger.info(f"junc: {tl}, current_phase:{current_phase}, next_phase: {next_phase}")
+                phases.append(next_phase)
+                traci.trafficlight.setPhase(tl, next_phase)
+            traci.simulationStep()
+
+            # Step simulation until the next action time
+            target_time = current_time + STEP_DURATION - 1
+            while current_time < target_time:
+                traci.simulationStep()
+                current_time = traci.simulation.getTime()
+                done = (
+                    traci.simulation.getMinExpectedNumber() == 0
+                    or current_time >= MAX_SIM_TIME
+                )
+
+            next_global_state = dict()
+            rewards = dict()
+            global_reward = calculate_global_reward(global_state, next_global_state)
+            smooth_global_reward.update(global_reward)
+            
+            for junction in tl_junctions:
+                global_state[junction] = get_own_state(
+                    junction_id=junction,
+                    structured_junction_lane_map=ordered_junction_lane_map,
+                    max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
+                    current_sim_time=current_time,
+                )
+                # logger.info(f'state for {junction}: {global_state[junction]}')
+
+                local_reward = calculate_local_reward(
+                    global_state[junction], []
+                )
+                rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
+            total_reward = sum(rewards.values())
+            logger.warning(f'step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}')
+            smooth_total_reward.update(total_reward)
+            smooth_global_reward.update(global_reward)
+            run.log(
+                {
+                    "step": step_count,
+                    "global_reward": global_reward,
+                    "total_reward": total_reward,
+                    "smoothed_global_reward": smooth_global_reward.get_value(),
+                    "smoothed_total_reward": smooth_total_reward.get_value(),
+                    "next_phases":phases,
+                }
+            )
+            step_count += 1
 
     traci.close()
     logger.info("Timed baseline simulation completed.")
-
 
 smooth_global_reward = SmoothedValue(alpha=0.3)
 smooth_total_reward = SmoothedValue(alpha=0.3)
 
 
 if __name__ == "__main__":
-    random_baseline()
-    # timed_baseline()
+    # random_baseline()
+    timed_baseline()
