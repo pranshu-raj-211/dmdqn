@@ -55,7 +55,7 @@ def load_config(agent_yaml_path, env_yaml_path):
 
 def initialize_environment():
     """Starts SUMO with appropriate flags, returns junctions, junction-lane mapping."""
-    traci.start(["sumo-gui", "-c", SUMO_CFG_PATH])
+    traci.start(["sumo", "-c", SUMO_CFG_PATH])
     tl_junctions = get_traffic_light_junction_ids_and_net_sumolib(SUMO_NET_PATH)
     all_lanes = traci.lane.getIDList()
     non_internal_lanes = [lane for lane in all_lanes if not lane.startswith(":")]
@@ -75,7 +75,7 @@ run = wandb.init(
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=90, mode="offline"),
+    settings=wandb.Settings(init_timeout=90, mode="online"),
 )
 
 
@@ -247,11 +247,8 @@ def greedy_baseline():
 def timed_baseline():
     """Cycles through traffic light phases with fixed durations."""
     set_seeds(42)  # Ensure reproducibility
-    NUM_PHASES = 4
     global_state = dict()
     tl_junctions, ordered_junction_lane_map = initialize_environment()
-    # ! do not use step duration equal to or factor of traffic light duration (20). 
-    # Will cause skipping phases - unintended consequence.
 
     for episode in range(EPISODES):
         current_time = traci.simulation.getTime()
@@ -267,15 +264,6 @@ def timed_baseline():
             )
 
         while not done:
-            phases = []
-            for tl in tl_junctions:
-                current_phase = traci.trafficlight.getPhase(tl)
-                next_phase = (current_phase + 1) % NUM_PHASES
-                logger.info(f"junc: {tl}, current_phase:{current_phase}, next_phase: {next_phase}")
-                phases.append(next_phase)
-                traci.trafficlight.setPhase(tl, next_phase)
-            traci.simulationStep()
-
             # Step simulation until the next action time
             target_time = current_time + STEP_DURATION - 1
             while current_time < target_time:
@@ -315,7 +303,6 @@ def timed_baseline():
                     "total_reward": total_reward,
                     "smoothed_global_reward": smooth_global_reward.get_value(),
                     "smoothed_total_reward": smooth_total_reward.get_value(),
-                    "next_phases":phases,
                 }
             )
             step_count += 1
