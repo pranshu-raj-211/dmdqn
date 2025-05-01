@@ -12,3 +12,4 @@ wandb/
 .env
 *.log
 logs/
+*.xml
