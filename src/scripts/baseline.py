@@ -21,7 +21,7 @@ baseline = None
 
 EPISODES = 1
 MAX_LANES_PER_DIRECTION = 3
-STEP_DURATION = 7.0
+STEP_DURATION = 20.0
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
 MAX_SIM_TIME = 3600
 
@@ -209,6 +209,7 @@ def get_queue_length_junction(ordered_junction_lane_map: dict):
 def greedy_baseline():
     """Selects actions for traffic lights based on the direction with the most vehicles."""
     set_seeds(42)
+    # QUEUE_PHASE_MAP = {0:2, 1:0, 2:1, 3:3}
     tl_junctions, ordered_junction_lane_map = initialize_environment()
 
     for episode in range(EPISODES):
@@ -217,16 +218,23 @@ def greedy_baseline():
         step_count = 0
 
         while not done:
-            for tl in tl_junctions:
-                # Get queue lengths for each direction
-                queue_lengths = []
-                for direction_lanes in ordered_junction_lane_map[tl]:
-                    queue_length = sum(traci.lane.getLastStepHaltingNumber(lane) for lane in direction_lanes)
-                    queue_lengths.append(queue_length)
+            # Dictionary to store queue lengths for each junction
+            queue_lengths = {}
 
-                # Select the phase corresponding to the direction with the most vehicles
-                max_queue_index = np.argmax(queue_lengths)
-                traci.trafficlight.setPhase(tl, max_queue_index)
+            for junction, direction_lanes in ordered_junction_lane_map.items():
+                # Calculate queue lengths for each direction at the junction
+                direction_queues = [
+                    sum(traci.lane.getLastStepHaltingNumber(lane) for lane in direction)
+                    for direction in direction_lanes
+                ]
+                # queues in nsew order confirmed
+                queue_lengths[junction] = direction_queues
+                logger.info(f'Junction: {junction}, queues:{queue_lengths[junction]}')
+
+                # phases should be made nsew in the net, for ease of work
+                max_queue_index = np.argmax(direction_queues)
+                logger.info(f'queue index:{max_queue_index}')
+                traci.trafficlight.setPhase(junction, max_queue_index)
 
             # Step simulation until the next action time
             target_time = current_time + STEP_DURATION
@@ -316,4 +324,5 @@ smooth_total_reward = SmoothedValue(alpha=0.3)
 
 if __name__ == "__main__":
     # random_baseline()
-    timed_baseline()
+    # timed_baseline()
+    greedy_baseline()

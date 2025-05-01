@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2025-05-01 20:08:40 by Eclipse SUMO netedit Version v1_22_0+1684-b918e1ddaf1
+<!-- generated on 2025-05-02 00:46:36 by Eclipse SUMO netedit Version v1_22_0+1684-b918e1ddaf1
 <neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
 
     <input>
-        <sumo-net-file value="grid_3x3_lht.net.xml"/>
+        <sumo-net-file value="src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"/>
     </input>
 
     <output>
-        <output-file value="grid_3x3_lht.net.xml"/>
+        <output-file value="src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"/>
     </output>
 
     <processing>
@@ -638,58 +638,58 @@
         <lane id="J_2_2_to_J_2_1_2" index="2" speed="13.89" length="372.80" shape="886.40,98.40 513.60,98.40"/>
     </edge>
 
-    <tlLogic id="J_0_0" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_0_0" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_0_1" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_0_1" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_0_2" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_0_2" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_1_0" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_1_0" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_1_1" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_1_1" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_1_2" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_1_2" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_2_0" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_2_0" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_2_1" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_2_1" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
-    <tlLogic id="J_2_2" type="actuated" programID="0" offset="0">
+    <tlLogic id="J_2_2" type="static" programID="0" offset="0">
+        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="GGGrrrrrrrrr"/>
         <phase duration="20" state="rrrGGGrrrrrr"/>
-        <phase duration="20" state="rrrrrrGGGrrr"/>
         <phase duration="20" state="rrrrrrrrrGGG"/>
     </tlLogic>
 
