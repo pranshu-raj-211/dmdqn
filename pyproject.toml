@@ -8,6 +8,7 @@ dependencies = [
     "keras>=3.9.2",
     "tensorboard>=2.19.0",
     "tensorflow[and-cuda]>=2.19.0",
+    "torch-geometric>=2.6.1",
     "traci>=1.22.0",
     "wandb>=0.19.9",
 ]

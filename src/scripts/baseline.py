@@ -216,6 +216,15 @@ def greedy_baseline():
         current_time = traci.simulation.getTime()
         done = False
         step_count = 0
+        global_state = dict()
+
+        for junction in tl_junctions:
+            global_state[junction] = get_own_state(
+                junction_id=junction,
+                structured_junction_lane_map=ordered_junction_lane_map,
+                max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
+                current_sim_time=current_time,
+            )
 
         while not done:
             # Dictionary to store queue lengths for each junction
@@ -245,7 +254,37 @@ def greedy_baseline():
                     traci.simulation.getMinExpectedNumber() == 0
                     or current_time >= MAX_SIM_TIME
                 )
+            next_global_state = dict()
+            rewards = dict()
+            global_reward = calculate_global_reward(global_state, next_global_state)
+            smooth_global_reward.update(global_reward)
+            
+            for junction in tl_junctions:
+                global_state[junction] = get_own_state(
+                    junction_id=junction,
+                    structured_junction_lane_map=ordered_junction_lane_map,
+                    max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
+                    current_sim_time=current_time,
+                )
+                # logger.info(f'state for {junction}: {global_state[junction]}')
 
+                local_reward = calculate_local_reward(
+                    global_state[junction], []
+                )
+                rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
+            total_reward = sum(rewards.values())
+            logger.warning(f'step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}')
+            smooth_total_reward.update(total_reward)
+            smooth_global_reward.update(global_reward)
+            run.log(
+                {
+                    "step": step_count,
+                    "global_reward": global_reward,
+                    "total_reward": total_reward,
+                    "smoothed_global_reward": smooth_global_reward.get_value(),
+                    "smoothed_total_reward": smooth_total_reward.get_value(),
+                }
+            )
             step_count += 1
 
     traci.close()
