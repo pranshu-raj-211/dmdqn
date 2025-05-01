@@ -29,7 +29,9 @@ If you have specific vehicles defined, in a file vtypes.xml:
 use 
 `python /usr/share/sumo/tools/randomTrips.py -n grid_3x3_lht.net.xml -o trips.rou.xml --begin 0 --end 3600 --period 1`
 
-vehicles will need to be added manually, I prefer using a script to randomize things.
+Vehicles will need to be added manually (for using the different lengths provided), I prefer using a script to randomize things.
+
+Use the script `assign_vehicle_to_trip.py` for doing this.
 
 
 Where 
