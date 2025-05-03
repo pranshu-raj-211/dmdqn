@@ -127,7 +127,7 @@ class DQNAgent:
         self.target_update_frequency = config.get(
             "target_update_frequency", 1000
         )  # number of learning steps
-        self.nn_layers = config.get("nn_layers", [64, 64])  # hidden layer sizes
+        self.nn_layers = config.get("nn_layers", [128, 128, 64])  # hidden layer sizes
 
         self.online_network = self.build_simple_q_network(
             self.state_size, self.action_size, self.nn_layers

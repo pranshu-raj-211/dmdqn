@@ -8,7 +8,7 @@ import numpy as np
 from log_config import logger
 
 DIRECTION_ORDER = {"n": 0, "s": 1, "e": 2, "w": 3, "unknown": 4, "error": 5}
-SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.sumocfg"
+SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 PORT = 8813
 PHASE_ENCODING = {0: [1, 0, 0, 0], 1: [0, 1, 0, 0], 2: [0, 0, 1, 0], 3: [0, 0, 0, 1]}

@@ -47,7 +47,7 @@ from log_config import logger
 
 AGENT_CONFIG_PATH = ""
 ENV_CONFIG_PATH = ""
-SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.sumocfg"
+SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 baseline = None
 reward_mean = 150
@@ -57,7 +57,7 @@ EPISODES = 10
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 10.0
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
-MAX_SIM_TIME = 2400
+MAX_SIM_TIME = 10_000
 INPUT_SIZE = 49
 QUEUES_EDGE_SIZE = 4
 ACTION_SIZE=4
@@ -287,14 +287,6 @@ def train_agents():
                 )
                 loss = agent.replay()
                 # logger.info(f"loss:{loss}, agent:{junction_id}")
-                run.log(
-                    {
-                        "episode": episode,
-                        "step": step_count,
-                        "junction": junction_id,
-                        "loss_agent": loss,
-                    }
-                )
                 total_loss += loss
             # global rewards are sum of queues for all network, total are reward combination applied
             logger.info(
