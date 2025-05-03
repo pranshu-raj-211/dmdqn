@@ -47,8 +47,8 @@ from log_config import logger
 
 AGENT_CONFIG_PATH = ""
 ENV_CONFIG_PATH = ""
-SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3.sumocfg"
-SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3.net.xml"
+SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.sumocfg"
+SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 baseline = None
 
 EPISODES = 100
@@ -56,6 +56,9 @@ MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 10.0
 ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
 MAX_SIM_TIME = 2400
+INPUT_SIZE = 45
+QUEUES_EDGE_SIZE = 4
+ACTION_SIZE=4
 
 
 tf.keras.mixed_precision.set_global_policy("mixed_float16")
@@ -122,7 +125,7 @@ def create_agents(tl_junctions):
 
     for junction_id in tl_junctions:
         agents[junction_id] = DQNAgent(
-            state_size=89, action_size=4, agent_id=junction_id, config=agent_config
+            state_size=INPUT_SIZE, action_size=ACTION_SIZE, agent_id=junction_id, config=agent_config
         )
     return agents
 
@@ -133,11 +136,12 @@ run = wandb.init(
     config={
         "episodes": EPISODES,
         "max_lanes_per_direction": MAX_LANES_PER_DIRECTION,
+        "state_version": 3,
         "step_duration": STEP_DURATION,
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=90, mode="online"),
+    settings=wandb.Settings(init_timeout=90, mode="offline"),
 )
 
 
@@ -157,12 +161,12 @@ class SmoothedValue:
 
 
 def calculate_local_reward(current_state, next_state):
-    return -1.0 * sum(current_state[:12])
+    return -1.0 * sum(current_state[:QUEUES_EDGE_SIZE])
 
 
 def calculate_global_reward(global_state: dict, next_global_state: dict):
     """Return negative of difference of total queue length between next state and current."""
-    return -1.0 * sum(sum(state[:12]) for state in global_state.values())
+    return -1.0 * sum(sum(state[:QUEUES_EDGE_SIZE]) for state in global_state.values())
 
 
 def calculate_rewards(

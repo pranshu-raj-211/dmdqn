@@ -17,11 +17,14 @@ updates to the target network and other utilities like model saving and loading.
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import initializers # type: ignore
-from tensorflow.keras.layers import Dense, Input, Concatenate # type: ignore
+from tensorflow.keras import initializers  # type: ignore
+from tensorflow.keras.layers import Dense, Input, Concatenate  # type: ignore
 from collections import deque
 import random
 from log_config import logger
+
+
+EXPLORATION_ONLY_STEPS = 10_000
 
 
 class ReplayBuffer:
@@ -56,7 +59,7 @@ class ReplayBuffer:
         self.buffer.append((state_copy, action, reward, next_state_copy, done))
         logger.debug(f"Replay buffer size after adding: {len(self.buffer)}")
 
-    def sample(self, batch_size:int):
+    def sample(self, batch_size: int):
         """Samples a random mini-batch of experiences from the buffer."""
         if len(self.buffer) < batch_size:
             return None  # Not enough samples yet
@@ -105,8 +108,8 @@ class DQNAgent:
             config (dict): Dictionary of agent hyperparameters.
         """
         self.agent_id = agent_id
-        self.state_size = 89
-        self.action_size = 4
+        self.state_size = state_size
+        self.action_size = action_size
 
         # Hyperparameters
         self.learning_rate = config.get("learning_rate", 0.001)
@@ -255,10 +258,17 @@ class DQNAgent:
             int: The chosen action index (0-3).
         """
         # Decay epsilon
-        if self.global_step_count < 8000:
+        if self.global_step_count < EXPLORATION_ONLY_STEPS:
             self.epsilon = 1.0
         elif self.epsilon > self.epsilon_min:
-            self.epsilon = max(0.01, 1.0 * np.exp(-(self.global_step_count - 8000) / 16000))
+            self.epsilon = max(
+                0.01,
+                1.0
+                * np.exp(
+                    -(self.global_step_count - EXPLORATION_ONLY_STEPS)
+                    / EXPLORATION_ONLY_STEPS
+                ),
+            )
 
         if np.random.rand() < self.epsilon:
             # Explore: Choose a random action
@@ -339,7 +349,9 @@ class DQNAgent:
         )
 
         # Double DQN: use online network for action selection, target for evaluation
-        next_actions = tf.argmax(self.online_network(next_states_tf), axis=1, output_type=tf.int32)
+        next_actions = tf.argmax(
+            self.online_network(next_states_tf), axis=1, output_type=tf.int32
+        )
         indices = tf.stack([tf.range(self.batch_size), next_actions], axis=1)
         target_q_values = tf.gather_nd(self.target_network(next_states_tf), indices)
         target_q_values = tf.cast(target_q_values, dtype=tf.float32)
@@ -348,26 +360,40 @@ class DQNAgent:
 
         with tf.GradientTape() as tape:
             q_values_all = tf.cast(self.online_network(states_tf), tf.float32)
-            predicted_q = tf.reduce_sum(q_values_all * tf.one_hot(actions_tf, self.action_size, dtype=tf.float32), axis=1)
-            loss = tf.keras.losses.MeanSquaredError()(targets, predicted_q)
+            predicted_q = tf.reduce_sum(
+                q_values_all
+                * tf.one_hot(actions_tf, self.action_size, dtype=tf.float32),
+                axis=1,
+            )
+            loss = tf.keras.losses.MeanAbsoluteError()(targets, predicted_q)
 
         # logger.info(f"Loss value before backprop {loss}")
 
         grads = tape.gradient(loss, self.online_network.trainable_variables)
-        self.optimizer.apply_gradients(zip(grads, self.online_network.trainable_variables))
+        self.optimizer.apply_gradients(
+            zip(grads, self.online_network.trainable_variables)
+        )
 
         self.learn_step_counter += 1
 
         q_values_mean = tf.reduce_mean(q_values_all).numpy()
         q_values_std = tf.math.reduce_std(q_values_all).numpy()
-        action_distribution = tf.reduce_sum(tf.one_hot(actions_tf, self.action_size), axis=0).numpy()
+        action_distribution = tf.reduce_sum(
+            tf.one_hot(actions_tf, self.action_size), axis=0
+        ).numpy()
 
         with self.tensorboard_writer.as_default():
             tf.summary.scalar("loss", loss, step=self.learn_step_counter)
             tf.summary.scalar("epsilon", self.epsilon, step=self.learn_step_counter)
-            tf.summary.scalar("q_values_mean", q_values_mean, step=self.learn_step_counter)
-            tf.summary.scalar("q_values_std", q_values_std, step=self.learn_step_counter)
-            tf.summary.histogram("action_distribution", action_distribution, step=self.learn_step_counter)
+            tf.summary.scalar(
+                "q_values_mean", q_values_mean, step=self.learn_step_counter
+            )
+            tf.summary.scalar(
+                "q_values_std", q_values_std, step=self.learn_step_counter
+            )
+            tf.summary.histogram(
+                "action_distribution", action_distribution, step=self.learn_step_counter
+            )
 
         # Soft updates
         # self.update_target_network_soft()
@@ -429,6 +455,6 @@ class DQNAgent:
         """Performs a learning step using experiences from the replay buffer."""
         loss = self.learn()
         if loss is None:
-            return 0 # workaround, in case replay buffer is not filled.
+            return 0  # workaround, in case replay buffer is not filled.
         # todo: do the replay buffer check in training script as well, to prevent this
         return loss

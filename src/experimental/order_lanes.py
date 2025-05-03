@@ -8,15 +8,10 @@ import numpy as np
 from log_config import logger
 
 DIRECTION_ORDER = {"n": 0, "s": 1, "e": 2, "w": 3, "unknown": 4, "error": 5}
-SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3.sumocfg"
-SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3.net.xml"
+SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.sumocfg"
+SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 PORT = 8813
-PHASE_ENCODING = {
-    0:[1, 0,0,0],
-    1:[0,1,0,0],
-    2:[0,0,1,0],
-    3:[0,0,0,1]
-}
+PHASE_ENCODING = {0: [1, 0, 0, 0], 1: [0, 1, 0, 0], 2: [0, 0, 1, 0], 3: [0, 0, 0, 1]}
 
 
 if "SUMO_HOME" in os.environ:
@@ -340,7 +335,7 @@ def close_sumo():
     # TODO: how to terminate the sumo process? do this to hard reset sumo after each episode
 
 
-def reset_sumo(sumo_seed='42', use_gui=False):
+def reset_sumo(sumo_seed="42", use_gui=False):
     close_sumo()
     time.sleep(1)
     process = start_sumo(use_gui=use_gui, sumo_seed=sumo_seed)
@@ -373,7 +368,7 @@ def _parse_junction_id(junction_id_str: str) -> tuple[int, int] | None:
 
 
 def get_lane_index(lane_id_str: str) -> int:
-    """Which part of edge the current lane is.
+    """Which part of edge the current lane is (right side driving).
 
     0: Right
     1: Middle
@@ -433,42 +428,39 @@ def get_own_state(
     max_lanes_per_direction: int,
     current_sim_time: float,
 ) -> list[float]:
-    """Get state of a single junction."""
-    block_size = 4 * max_lanes_per_direction
+    """Get state of a single junction.
+    
+    Returns list of size 9 (4 edge blockage + 4 phase + 1 time spent in phase)."""
+    # block_size = 4  # using one integer to represent whole edge
 
-    state_block = [-1.0] * block_size
+    state_block = list()
 
     if junction_id not in structured_junction_lane_map:
-        return state_block
+        return [-1.0] * 9
 
     directional_lists = structured_junction_lane_map[junction_id]
 
     for dir_list_index in range(len(directional_lists)):
         lanes_list = directional_lists[dir_list_index]
+        queue_length = 0
 
-        for lane_idx_in_list in range(len(lanes_list)):
-            lane_id = lanes_list[lane_idx_in_list]
+        for lane_id in lanes_list:
+            try:
+                queue_length += traci.lane.getLastStepHaltingNumber(lane_id)
+            except traci.exceptions.TraCIException:
+                pass
+            except Exception:
+                pass
+        state_block.append(float(queue_length))
 
-            flat_index = (dir_list_index * max_lanes_per_direction) + lane_idx_in_list
-
-            # add queue size for each lane to local state
-            if flat_index < block_size:
-                try:
-                    queue_value = traci.lane.getLastStepHaltingNumber(lane_id)
-                    state_block[flat_index] = float(queue_value)
-                except traci.exceptions.TraCIException:
-                    pass
-                except Exception:
-                    pass
-
-    phase = [0,0,0,0]
+    phase = [0, 0, 0, 0]
     time_spent = -1.0
 
     try:
         if traci.junction.getType(junction_id) == "traffic_light":
             current_phase = traci.trafficlight.getPhase(junction_id)
             # one hot encode phase, zeros for padding
-            phase = PHASE_ENCODING.get(current_phase, [0,0,0,0])
+            phase = PHASE_ENCODING.get(current_phase, [0, 0, 0, 0])
 
             try:
                 next_switch_time = traci.trafficlight.getNextSwitch(junction_id)
@@ -494,7 +486,7 @@ def get_own_state(
     state_block.extend(phase)
     state_block.append(time_spent)
 
-    assert len(state_block) == 17, "Local state size unexpected"
+    assert len(state_block) == 9, "Local state size unexpected"
 
     return state_block
 
@@ -511,7 +503,7 @@ def build_state_vector(
 
     This includes local state, neighbor presence vector, neighbor local states.
     """
-    max_lanes_per_direction = 3
+    max_lanes_per_direction = 1
     block_size = (4 * max_lanes_per_direction) + 5
     padding_block = [-1.0] * block_size
 
@@ -545,13 +537,16 @@ def build_state_vector(
 
     for neighbor_id in neighbor_id_list:
         if neighbor_id is not None and neighbor_id in global_state:
-            nbr_state = np.array(global_state[neighbor_id], dtype=np.float32)
+            # TODO: remove lane facing the main junction (not needed, not incoming to current)
+            nbr_state = global_state[neighbor_id]
         else:
-            nbr_state = np.array(padding_block, dtype=np.float32)
-        state_vector.extend(nbr_state.tolist())
+            nbr_state = padding_block
+        state_vector.extend(nbr_state)
 
-    logger.debug(f'{junction_id}: state vector length {len(state_vector)}')
-    assert len(state_vector) == 89, f"Unexpected state vector length {len(state_vector)}"
+    logger.debug(f"{junction_id}: state vector length {len(state_vector)}")
+    assert (
+        len(state_vector) == 45
+    ), f"Unexpected state vector length {len(state_vector)}"
     return np.array(state_vector)
 
 
@@ -563,6 +558,7 @@ def order_lanes_in_edge(junction_lane_map: dict[str, list[list[str]]]):
 
 
 def calculate_neighbors(junction_id: str) -> list[int]:
+    """Builds the presence vector for a junction in a 3x3 grid given its id(location in grid)."""
     x, y = junction_id.split("_")[1], junction_id.split("_")[2]
     presence_vector = [1, 1, 1, 1]
     if x == 0:
