@@ -12,7 +12,6 @@ wandb/
 .env
 *.log
 logs/
-*.xml
 
 src/sumo_files/scenarios/grid_3x3_lefthand/e2_*.xml
 src/sumo_files/scenarios/grid_3x3_lefthand/e2_1.xml
