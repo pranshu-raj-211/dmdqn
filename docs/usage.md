@@ -34,6 +34,12 @@ Vehicles will need to be added manually (for using the different lengths provide
 Use the script `assign_vehicle_to_trip.py` for doing this.
 
 
+For 4 phases (Red-green only) tllogic should be:
+<phase duration="20" state="GGGrrrrrrrrr"/>
+<phase duration="20" state="rrrGGGrrrrrr"/>
+<phase duration="20" state="rrrrrrGGGrrr"/>
+<phase duration="20" state="rrrrrrrrrGGG"/>
+
 Where 
 - grid.net.xml is your network file
 - /usr/share/sumo/ is the SUMO_HOME, env var in linux
@@ -42,4 +48,6 @@ Where
 - 0.6 defines density (time one vehicle is generated in, measured in seconds)
 
 
-`duarouter -n grid_3x3.net.xml --route-files trips_p05.trips.xml -o grid_3x3_p05.rou.xml --ignore-errors`
+`duarouter -n src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3
+.net.xml --route-files src/sumo_files/scenarios/grid_3x3_lefthand/trips_with_types_10h.trips.xml -o src/sumo_fil
+es/scenarios/grid_3x3_lefthand/trips_10h.rou.xml --ignore-errors`

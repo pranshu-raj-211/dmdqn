@@ -447,6 +447,8 @@ def get_own_state(
         for lane_id in lanes_list:
             try:
                 queue_length += traci.lane.getLastStepHaltingNumber(lane_id)
+                # need lane id to detector id mapping for this to work
+                # lane_length_covered = traci.lanearea.getJamLengthMeters()
             except traci.exceptions.TraCIException:
                 pass
             except Exception:
@@ -545,7 +547,7 @@ def build_state_vector(
 
     logger.debug(f"{junction_id}: state vector length {len(state_vector)}")
     assert (
-        len(state_vector) == 45
+        len(state_vector) == 49
     ), f"Unexpected state vector length {len(state_vector)}"
     return np.array(state_vector)
 

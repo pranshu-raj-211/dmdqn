@@ -49,8 +49,8 @@ def assign_random_vtypes_to_trips(input_filename, output_filename, vtype_ids):
 
 
 if __name__ == "__main__":
-    input_route_file = 'src/sumo_files/scenarios/grid_3x3_lefthand/trips.rou.xml'
-    output_route_file = 'src/sumo_files/scenarios/grid_3x3_lefthand/trips_with_types.rou.xml'
+    input_route_file = 'src/sumo_files/scenarios/grid_3x3_lefthand/trips_10h.rou.xml'
+    output_route_file = 'src/sumo_files/scenarios/grid_3x3_lefthand/trips_with_types_10h.rou.xml'
 
     available_vtype_ids = ["car", "truck", "motorcycle", "bus"]
 

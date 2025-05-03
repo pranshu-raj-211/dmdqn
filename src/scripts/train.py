@@ -53,12 +53,12 @@ baseline = None
 reward_mean = 150
 reward_std = 20
 
-EPISODES = 100
+EPISODES = 10
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 10.0
-ACTION_MAP = {0: 0, 1: 3, 2: 6, 3: 9}
+ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
 MAX_SIM_TIME = 2400
-INPUT_SIZE = 45
+INPUT_SIZE = 49
 QUEUES_EDGE_SIZE = 4
 ACTION_SIZE=4
 
@@ -143,7 +143,7 @@ run = wandb.init(
         "sumo_cfg_path": SUMO_CFG_PATH,
         "sumo_net_path": SUMO_NET_PATH,
     },
-    settings=wandb.Settings(init_timeout=90, mode="offline"),
+    settings=wandb.Settings(init_timeout=30, mode="online"),
 )
 
 
