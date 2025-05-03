@@ -50,6 +50,8 @@ ENV_CONFIG_PATH = ""
 SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 baseline = None
+reward_mean = 150
+reward_std = 20
 
 EPISODES = 100
 MAX_LANES_PER_DIRECTION = 3
@@ -255,7 +257,7 @@ def train_agents():
                 local_reward = calculate_local_reward(
                     global_state[junction], next_global_state[junction]
                 )
-                rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
+                rewards[junction] = (0.3 * local_reward + 0.7 * global_reward - reward_mean)/(reward_std)
             total_reward = sum(rewards.values())
             smooth_total_reward.update(total_reward)
 

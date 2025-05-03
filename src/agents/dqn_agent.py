@@ -378,6 +378,8 @@ class DQNAgent:
 
         q_values_mean = tf.reduce_mean(q_values_all).numpy()
         q_values_std = tf.math.reduce_std(q_values_all).numpy()
+        target_q_values_mean = tf.reduce_mean(target_q_values).numpy()
+        target_q_values_std = tf.math.reduce_std(target_q_values).numpy()
         action_distribution = tf.reduce_sum(
             tf.one_hot(actions_tf, self.action_size), axis=0
         ).numpy()
@@ -386,10 +388,16 @@ class DQNAgent:
             tf.summary.scalar("loss", loss, step=self.learn_step_counter)
             tf.summary.scalar("epsilon", self.epsilon, step=self.learn_step_counter)
             tf.summary.scalar(
-                "q_values_mean", q_values_mean, step=self.learn_step_counter
+                "q_values_mean_online", q_values_mean, step=self.learn_step_counter
             )
             tf.summary.scalar(
-                "q_values_std", q_values_std, step=self.learn_step_counter
+                "q_values_std_online", q_values_std, step=self.learn_step_counter
+            )
+            tf.summary.scalar(
+                "q_values_mean_target", target_q_values_mean, step=self.learn_step_counter
+            )
+            tf.summary.scalar(
+                "q_values_std_target", target_q_values_std, step=self.learn_step_counter
             )
             tf.summary.histogram(
                 "action_distribution", action_distribution, step=self.learn_step_counter
