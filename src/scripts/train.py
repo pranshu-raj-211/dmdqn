@@ -133,18 +133,20 @@ def create_agents(tl_junctions):
 
 
 # Initialize wandb
-run = wandb.init(
-    project="dqn_multi_agent_traffic",
-    config={
-        "episodes": EPISODES,
-        "max_lanes_per_direction": MAX_LANES_PER_DIRECTION,
-        "state_version": 3,
-        "step_duration": STEP_DURATION,
-        "sumo_cfg_path": SUMO_CFG_PATH,
-        "sumo_net_path": SUMO_NET_PATH,
-    },
-    settings=wandb.Settings(init_timeout=30, mode="online"),
-)
+def init_wandb():
+    run = wandb.init(
+        project="dqn_multi_agent_traffic",
+        config={
+            "episodes": EPISODES,
+            "max_lanes_per_direction": MAX_LANES_PER_DIRECTION,
+            "state_version": 3,
+            "step_duration": STEP_DURATION,
+            "sumo_cfg_path": SUMO_CFG_PATH,
+            "sumo_net_path": SUMO_NET_PATH,
+        },
+        settings=wandb.Settings(init_timeout=30, mode="online"),
+    )
+    return run
 
 
 class SmoothedValue:
@@ -318,4 +320,5 @@ smooth_global_reward = SmoothedValue(alpha=0.3)
 smooth_total_reward = SmoothedValue(alpha=0.3)
 
 if __name__ == "__main__":
-    train_agents()
+    run = init_wandb()
+    train_agents(run)

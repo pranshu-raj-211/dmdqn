@@ -191,59 +191,42 @@ def main():
     tl_junctions, ordered_junction_lane_map = initialize_environment()
     tl_junctions.sort()
 
+    junction_to_index = {j: i for i, j in enumerate(tl_junctions)}
+
     for episode in range(EPISODES):
         traci.load(["-c", SUMO_CFG_PATH])
-        global_state = {}
         current_time = traci.simulation.getTime()
 
-        # Initialize global state
-        for junction in tl_junctions:
-            global_state[junction] = get_own_state(
-                junction_id=junction,
-                structured_junction_lane_map=ordered_junction_lane_map,
-                max_lanes_per_direction=3,
-                current_sim_time=current_time,
-            )
+        # Initialize global state as a graph
+        global_state = get_graph_from_env(
+            tl_junctions=tl_junctions,
+            structured_junction_lane_map=ordered_junction_lane_map,
+            max_lanes_per_direction=3,
+            current_sim_time=current_time,
+        )
 
         done = False
         total_reward = 0
         step_count = 0
 
         while not done:
+            # Get Q-values for all junctions at once
+            q_values = model(global_state.x, global_state.edge_index)
+
+            # Get actions for each junction using the mapping
             actions = {}
-
-            # Get actions for each junction
             for junction_id in tl_junctions:
-                state = get_junction_state(
-                    junction_id,
-                    structured_junction_lane_map=ordered_junction_lane_map,
-                    max_lanes_per_direction=3,
-                    current_sim_time=current_time,
-                )
-                state_tensor = torch.tensor(state, dtype=torch.float32)
-                # Construct the graph for the environment
-                graph = get_graph_from_env(
-                    tl_junctions=tl_junctions,
-                    structured_junction_lane_map=ordered_junction_lane_map,
-                    max_lanes_per_direction=3,
-                    current_sim_time=current_time,
-                )
-
-                # Get the node features (state) and edge_index from the graph
-                state_tensor = graph.x
-                edge_index = graph.edge_index
-
-                # Pass the state and edge_index to the model
-                q_values = model(state_tensor, edge_index)
-                action, epsilon = select_actions(q_values, epsilon, step_count)
+                idx = junction_to_index[junction_id]
+                action, epsilon = select_actions(q_values[idx].unsqueeze(0), epsilon, step_count)
                 actions[junction_id] = action.item()
-                action, epsilon = select_actions(q_values, epsilon, step_count)
-                actions[junction_id] = action.item()
+
+            actions_tensor = torch.tensor(
+                [actions[j] for j in tl_junctions], dtype=torch.long
+            )
 
             # Apply actions and step simulation
             for junction_id, action in actions.items():
                 traci.trafficlight.setPhase(junction_id, ACTION_MAP[action])
-
             target_time = current_time + STEP_DURATION
             while current_time < target_time:
                 traci.simulationStep()
@@ -254,27 +237,17 @@ def main():
                 )
 
             # Update state and calculate rewards
-            next_global_state = {}
-            rewards = {}
-            for junction in tl_junctions:
-                next_global_state[junction] = get_own_state(
-                    junction_id=junction,
-                    structured_junction_lane_map=ordered_junction_lane_map,
-                    max_lanes_per_direction=3,
-                    current_sim_time=current_time,
-                )
-                rewards[junction] = get_reward(
-                    global_state[junction], next_global_state[junction]
-                )
+            next_global_state = get_graph_from_env(
+                tl_junctions=tl_junctions,
+                structured_junction_lane_map=ordered_junction_lane_map,
+                max_lanes_per_direction=3,
+                current_sim_time=current_time,
+            )
+            reward = get_reward(global_state, next_global_state)
+            total_reward += reward
 
             # Store experiences in replay buffer
-            for junction_id in tl_junctions:
-                buffer.push(
-                    global_state[junction_id],
-                    actions[junction_id],
-                    rewards[junction_id],
-                    next_global_state[junction_id],
-                )
+            buffer.push(global_state, actions_tensor, reward, next_global_state)
 
             # Train model if buffer has enough samples
             if len(buffer) >= BATCH_SIZE:
@@ -292,7 +265,7 @@ def main():
                         "loss": avg_loss,
                         "q_mean": q_preds.mean().item(),
                         "q_max": q_preds.max().item(),
-                        "smoothed_reward": smooth_reward,
+                        "smoothed_reward": smooth_reward.get_value(),
                     }
                 )
 
