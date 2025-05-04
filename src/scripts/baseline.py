@@ -281,7 +281,7 @@ def greedy_baseline():
                 }
             )
             step_count += 1
-
+        logger.warning(f'Episode ended, n_vehicles : {traci.simulation.getMinExpectedNumber()}, time : {current_time}')
     traci.close()
     logger.info("Greedy baseline simulation completed.")
 

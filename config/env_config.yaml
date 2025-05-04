@@ -4,7 +4,7 @@ sumo_route_path: "src/sumo_files/scenarios/grid_3x3.rou.xml"
 sumo_gui: false
 sumo_port: 8813
 
-max_sim_time: 10000         # Max simulation time (sim seconds) per episode
+max_sim_time: 40000         # Max simulation time (sim seconds) per episode
 max_steps_per_episode: 10000 # Alternative episode termination condition (steps)
 
 # reward_queue_weight: -1.0

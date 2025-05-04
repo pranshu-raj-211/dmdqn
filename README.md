@@ -4,6 +4,9 @@
 
 1. Set pythonpath (avoids errors like no module named src).
     `export PYTHONPATH=/path/to/dmdqn`
+
+    or simply:
+    ```export PYTHONPATH=`pwd` ```
 2. Download all dependencies
    
    If using uv:

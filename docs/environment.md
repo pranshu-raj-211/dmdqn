@@ -101,3 +101,25 @@ This section outlines the naming conventions used for nodes (junctions/dead ends
 4. **Lane IDs:**
     Edge id + '_i' where i is an integer (in our case - 0, 1 or 2).
     Left most lane of edge has suffix _0, middle _1, right _2.
+
+
+## State Versioning
+
+Due to rapidly changing scopes, I'll just document this here and move changes from hardcoded values in code to config files later.
+
+State version 1:
+    Size: 74
+    Local state: 4*3 queue lengths, 1 phase (single int - label encoding), 1 time spent in current phase
+
+State version 2:
+    Size: 89
+    Local state: 4*3 queue lengths, 4 phase (one hot encoded), 1 time spent in current phase
+
+State version 3:
+    Size: 49
+    Local state: 4*1 queue lengths (sum for all lanes in edge), 4 phase (one hot), 1 time spent in current phase
+
+State version 3.1:
+    Size: 45
+    Local state: 4*1 queue lengths (sum for all lanes in edge), 4 phase (one hot), 1 time spent in current phase
+    Global state: Remove the particular edge that is connected to neighbor (in neighbor state)
