@@ -292,7 +292,7 @@ def main():
                         "q_max": q_preds.max().item(),
                         "smoothed_reward": smooth_reward.get_value(),
                         "action_distribution": wandb.Histogram(
-                            action_counts.cpu().numpy()
+                            action_counts.tolist()
                         ),
                         "epsilon": epsilon,
                         # TODO: check if model really explores, because loss goes down rapidly
