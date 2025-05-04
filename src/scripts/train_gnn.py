@@ -40,7 +40,8 @@ class TrafficGNN(nn.Module):
         return self.lin(x)
 
 
-Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'])
+Transition = namedtuple("Transition", ["state", "action", "reward", "next_state"])
+
 
 class ReplayBuffer:
     def __init__(self, capacity=10000):
@@ -56,21 +57,48 @@ class ReplayBuffer:
         return len(self.buffer)
 
 
-def get_junction_state(junction_id):
-    state = get_own_state(junction_id)
-    assert len(state) == NODE_FEATURES_SIZE, f"incorrect state for junction {junction_id}"
-    return torch.tensor(state, dtype=torch.float32)
+def get_junction_state(
+    junction_id, structured_junction_lane_map, max_lanes_per_direction, current_sim_time
+):
+    state = get_own_state(
+        junction_id,
+        structured_junction_lane_map,
+        max_lanes_per_direction,
+        current_sim_time,
+    )
+    assert (
+        len(state) == NODE_FEATURES_SIZE
+    ), f"incorrect state for junction {junction_id}"
+    return torch.tensor(state, dtype=torch.float32).clone().detach()
 
-def get_graph_from_env(tl_junctions:list):
-    """Constructs graph from """
-    x = torch.stack([get_junction_state(i) for i in tl_junctions])
-    edge_index = torch.tensor([
-    [0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8,
-     0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8],
-    [1, 0, 2, 1, 4, 3, 5, 4, 7, 6, 8, 7,
-     3, 0, 4, 1, 5, 2, 6, 3, 7, 4, 8, 5]
-], dtype=torch.long)
+
+def get_graph_from_env(
+    tl_junctions: list,
+    structured_junction_lane_map,
+    max_lanes_per_direction,
+    current_sim_time,
+):
+    """Constructs graph from the environment."""
+    x = torch.stack(
+        [
+            get_junction_state(
+                junction_id=i,
+                structured_junction_lane_map=structured_junction_lane_map,
+                max_lanes_per_direction=max_lanes_per_direction,
+                current_sim_time=current_sim_time,
+            )
+            for i in tl_junctions
+        ]
+    )
+    edge_index = torch.tensor(
+        [
+            [0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 0, 3, 1, 4, 2, 5, 3, 6, 4, 7, 5, 8],
+            [1, 0, 2, 1, 4, 3, 5, 4, 7, 6, 8, 7, 3, 0, 4, 1, 5, 2, 6, 3, 7, 4, 8, 5],
+        ],
+        dtype=torch.long,
+    )
     return Data(x=x, edge_index=edge_index)
+
 
 def get_reward(prev_state, next_state):
     prev_qs = prev_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)  # total queue per node
@@ -81,7 +109,14 @@ def get_reward(prev_state, next_state):
     return reward
 
 
-def select_actions(q_values, epsilon, global_step, exploration_only_steps=2_000, epsilon_min=0.01, epsilon_decay_steps=10_000):
+def select_actions(
+    q_values,
+    epsilon,
+    global_step,
+    exploration_only_steps=2_000,
+    epsilon_min=0.01,
+    epsilon_decay_steps=10_000,
+):
     """
     Selects actions using the epsilon-greedy policy with epsilon decay.
 
@@ -102,8 +137,11 @@ def select_actions(q_values, epsilon, global_step, exploration_only_steps=2_000,
     elif epsilon > epsilon_min:
         epsilon = max(
             epsilon_min,
-            1.0 * torch.exp(
-                torch.tensor(-(global_step - exploration_only_steps) / epsilon_decay_steps)
+            1.0
+            * torch.exp(
+                torch.tensor(
+                    -(global_step - exploration_only_steps) / epsilon_decay_steps
+                )
             ).item(),
         )
 
@@ -133,13 +171,14 @@ def train_step(model, optimizer, transition, gamma=0.95):
 
 
 def main():
-    wandb.init(project="gnn-traffic-rl",
-               config={
-        "episodes": EPISODES,
-        "state_version": 3,
-        "step_duration": STEP_DURATION,
-    },
-    settings=wandb.Settings(init_timeout=30, mode="offline"),
+    wandb.init(
+        project="gnn-traffic-rl",
+        config={
+            "episodes": EPISODES,
+            "state_version": 3,
+            "step_duration": STEP_DURATION,
+        },
+        settings=wandb.Settings(init_timeout=30, mode="offline"),
     )
     writer = SummaryWriter("runs/traffic_rl")
     smooth_reward = SmoothedValue(alpha=0.2)
@@ -175,9 +214,29 @@ def main():
 
             # Get actions for each junction
             for junction_id in tl_junctions:
-                state = get_junction_state(junction_id)
+                state = get_junction_state(
+                    junction_id,
+                    structured_junction_lane_map=ordered_junction_lane_map,
+                    max_lanes_per_direction=3,
+                    current_sim_time=current_time,
+                )
                 state_tensor = torch.tensor(state, dtype=torch.float32)
-                q_values = model(state_tensor.unsqueeze(0), torch.tensor([]))
+                # Construct the graph for the environment
+                graph = get_graph_from_env(
+                    tl_junctions=tl_junctions,
+                    structured_junction_lane_map=ordered_junction_lane_map,
+                    max_lanes_per_direction=3,
+                    current_sim_time=current_time,
+                )
+
+                # Get the node features (state) and edge_index from the graph
+                state_tensor = graph.x
+                edge_index = graph.edge_index
+
+                # Pass the state and edge_index to the model
+                q_values = model(state_tensor, edge_index)
+                action, epsilon = select_actions(q_values, epsilon, step_count)
+                actions[junction_id] = action.item()
                 action, epsilon = select_actions(q_values, epsilon, step_count)
                 actions[junction_id] = action.item()
 
@@ -204,7 +263,9 @@ def main():
                     max_lanes_per_direction=3,
                     current_sim_time=current_time,
                 )
-                rewards[junction] = get_reward(global_state[junction], next_global_state[junction])
+                rewards[junction] = get_reward(
+                    global_state[junction], next_global_state[junction]
+                )
 
             # Store experiences in replay buffer
             for junction_id in tl_junctions:
@@ -212,7 +273,7 @@ def main():
                     global_state[junction_id],
                     actions[junction_id],
                     rewards[junction_id],
-                    next_global_state[junction_id]
+                    next_global_state[junction_id],
                 )
 
             # Train model if buffer has enough samples
@@ -225,19 +286,22 @@ def main():
 
                 avg_loss = total_loss / len(batch)
 
-                wandb.log({
-                    "reward": total_reward,
-                    "loss": avg_loss,
-                    "q_mean": q_preds.mean().item(),
-                    "q_max": q_preds.max().item(),
-                    "smoothed_reward": smooth_reward,
-                })
+                wandb.log(
+                    {
+                        "reward": total_reward,
+                        "loss": avg_loss,
+                        "q_mean": q_preds.mean().item(),
+                        "q_max": q_preds.max().item(),
+                        "smoothed_reward": smooth_reward,
+                    }
+                )
 
             global_state = next_global_state
             step_count += 1
 
         torch.save(model.state_dict(), f"traffic_gnn_rl{episode}.pt")
         writer.close()
+
 
 if __name__ == "__main__":
     random.seed(SEED_VALUE)
