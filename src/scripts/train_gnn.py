@@ -119,9 +119,9 @@ def select_actions(
     q_values,
     epsilon,
     global_step,
-    exploration_only_steps=2_000,
+    exploration_only_steps=500,
     epsilon_min=0.01,
-    epsilon_decay_steps=10_000,
+    epsilon_decay_steps=5_000,
 ):
     """
     Selects actions using the epsilon-greedy policy with epsilon decay.
@@ -167,7 +167,7 @@ def train_step(model, optimizer, transition, gamma=0.95):
     target = model(next_state.x, next_state.edge_index).detach().max(dim=1)[0]  # (9,)
 
     chosen_q = pred[range(NUM_NODES), action]  # Q(s,a)
-    expected_q = reward + gamma * target  # Bellman
+    expected_q = reward + gamma * target
 
     loss = F.mse_loss(chosen_q, expected_q)
     optimizer.zero_grad()
@@ -285,6 +285,8 @@ def main():
 
                 wandb.log(
                     {
+                        "step":step_count,
+                        "time":current_time,
                         "reward": total_reward,
                         "penalized_reward": total_penalized_reward,
                         "loss": avg_loss,
