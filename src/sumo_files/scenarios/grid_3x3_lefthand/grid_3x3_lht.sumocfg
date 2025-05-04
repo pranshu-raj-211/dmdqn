@@ -7,7 +7,6 @@
 
     <input>
         <net-file value="grid_3x3_lht.net.xml"/>
-        <additional-files value="lane_area_detectors.add.xml"/>
         <route-files value="trips_with_types.rou.xml"/>
     </input>
 
