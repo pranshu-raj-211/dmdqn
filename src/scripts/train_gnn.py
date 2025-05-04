@@ -199,7 +199,7 @@ def main():
     junction_to_index = {j: i for i, j in enumerate(tl_junctions)}
 
     for episode in range(EPISODES):
-        traci.load(["-c", SUMO_CFG_PATH, '--logs', 'sumo_logs.log'])
+        traci.load(["-c", SUMO_CFG_PATH, '--log', 'sumo_logs.log'])
         current_time = traci.simulation.getTime()
 
         # Initialize global state as a graph
@@ -208,6 +208,7 @@ def main():
             structured_junction_lane_map=ordered_junction_lane_map,
             max_lanes_per_direction=3,
             current_sim_time=current_time,
+            device=device
         )
         global_state.x = global_state.x.to(device)
         global_state.edge_index = global_state.edge_index.to(device)
