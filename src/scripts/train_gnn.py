@@ -58,7 +58,7 @@ class ReplayBuffer:
 
 
 def get_junction_state(
-    junction_id, structured_junction_lane_map, max_lanes_per_direction, current_sim_time
+    junction_id, structured_junction_lane_map, max_lanes_per_direction, current_sim_time, device
 ):
     state = get_own_state(
         junction_id,
@@ -69,7 +69,7 @@ def get_junction_state(
     assert (
         len(state) == NODE_FEATURES_SIZE
     ), f"incorrect state for junction {junction_id}"
-    return torch.tensor(state, dtype=torch.float32).clone().detach()
+    return torch.tensor(state, dtype=torch.float32, device=device).clone().detach()
 
 
 def get_graph_from_env(
@@ -77,6 +77,7 @@ def get_graph_from_env(
     structured_junction_lane_map,
     max_lanes_per_direction,
     current_sim_time,
+    device
 ):
     """Constructs graph from the environment."""
     x = torch.stack(
@@ -86,6 +87,7 @@ def get_graph_from_env(
                 structured_junction_lane_map=structured_junction_lane_map,
                 max_lanes_per_direction=max_lanes_per_direction,
                 current_sim_time=current_sim_time,
+                device=device
             )
             for i in tl_junctions
         ]
@@ -96,6 +98,7 @@ def get_graph_from_env(
             [1, 0, 2, 1, 4, 3, 5, 4, 7, 6, 8, 7, 3, 0, 4, 1, 5, 2, 6, 3, 7, 4, 8, 5],
         ],
         dtype=torch.long,
+        device=device
     )
     return Data(x=x, edge_index=edge_index)
 
@@ -178,12 +181,14 @@ def main():
             "state_version": 3,
             "step_duration": STEP_DURATION,
         },
-        settings=wandb.Settings(init_timeout=30, mode="offline"),
+        settings=wandb.Settings(init_timeout=30, mode="online"),
     )
     writer = SummaryWriter("runs/traffic_rl")
     smooth_reward = SmoothedValue(alpha=0.2)
 
-    model = TrafficGNN(in_channels=9, hidden_channels=64, out_channels=4)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = TrafficGNN(in_channels=9, hidden_channels=64, out_channels=4).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     buffer = ReplayBuffer()
     epsilon = 1.0
@@ -194,7 +199,7 @@ def main():
     junction_to_index = {j: i for i, j in enumerate(tl_junctions)}
 
     for episode in range(EPISODES):
-        traci.load(["-c", SUMO_CFG_PATH])
+        traci.load(["-c", SUMO_CFG_PATH, '--logs', 'sumo_logs.log'])
         current_time = traci.simulation.getTime()
 
         # Initialize global state as a graph
@@ -204,6 +209,8 @@ def main():
             max_lanes_per_direction=3,
             current_sim_time=current_time,
         )
+        global_state.x = global_state.x.to(device)
+        global_state.edge_index = global_state.edge_index.to(device)
 
         done = False
         total_reward = 0
@@ -221,7 +228,7 @@ def main():
                 actions[junction_id] = action.item()
 
             actions_tensor = torch.tensor(
-                [actions[j] for j in tl_junctions], dtype=torch.long
+                [actions[j] for j in tl_junctions], dtype=torch.long, device=device
             )
 
             # Apply actions and step simulation
@@ -242,6 +249,7 @@ def main():
                 structured_junction_lane_map=ordered_junction_lane_map,
                 max_lanes_per_direction=3,
                 current_sim_time=current_time,
+                device=device
             )
             reward = get_reward(global_state, next_global_state)
             total_reward += reward
@@ -272,7 +280,7 @@ def main():
             global_state = next_global_state
             step_count += 1
 
-        torch.save(model.state_dict(), f"traffic_gnn_rl{episode}.pt")
+        torch.save(model.state_dict(), f"models/gnn/traffic_gnn_rl{episode}.pt")
         writer.close()
 
 
