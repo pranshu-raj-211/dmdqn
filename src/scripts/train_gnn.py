@@ -103,12 +103,10 @@ def get_graph_from_env(
     return Data(x=x, edge_index=edge_index)
 
 
-def get_reward(prev_state, next_state):
+def get_reward(prev_state, next_state, penalty:float=0.0):
     prev_qs = prev_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)  # total queue per node
     next_qs = next_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)
-    reward = (prev_qs - next_qs).sum().item()  # encourage reducing queue
-    if (prev_qs == next_qs).all():
-        reward += -40  # penalty for stagnation
+    reward = (prev_qs - next_qs).sum().item()  - next_qs.sum().item() * penalty
     return reward
 
 
@@ -189,7 +187,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = TrafficGNN(in_channels=9, hidden_channels=64, out_channels=4).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
     buffer = ReplayBuffer()
     epsilon = 1.0
 
@@ -215,6 +213,7 @@ def main():
 
         done = False
         total_reward = 0
+        total_penalized_reward = 0
         step_count = 0
 
         while not done:
@@ -231,6 +230,7 @@ def main():
             actions_tensor = torch.tensor(
                 [actions[j] for j in tl_junctions], dtype=torch.long, device=device
             )
+            action_counts = torch.bincount(actions_tensor, minlength=len(4))
 
             # Apply actions and step simulation
             for junction_id, action in actions.items():
@@ -254,6 +254,10 @@ def main():
             )
             reward = get_reward(global_state, next_global_state)
             total_reward += reward
+            smooth_reward.update(total_reward)
+            penalized_reward = get_reward(global_state, next_global_state, penalty=0.1)
+            total_penalized_reward += penalized_reward
+            # TODO: experiment with alternative reward functions to improve learning
 
             # Store experiences in replay buffer
             buffer.push(global_state, actions_tensor, reward, next_global_state)
@@ -271,10 +275,16 @@ def main():
                 wandb.log(
                     {
                         "reward": total_reward,
+                        "penalized_reward": total_penalized_reward,
                         "loss": avg_loss,
                         "q_mean": q_preds.mean().item(),
                         "q_max": q_preds.max().item(),
                         "smoothed_reward": smooth_reward.get_value(),
+                        "action_distribution": wandb.Histogram(action_counts.cpu().numpy()),
+                        "epsilon":epsilon
+                        # TODO: check if model really explores, because loss goes down rapidly
+                        # TODO: implement early stopping if reward stagnates or loss doesn't improve
+                        # TODO: analyze replay buffer for reward distribution and state diversity
                     }
                 )
 
