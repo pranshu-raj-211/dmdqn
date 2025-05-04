@@ -10,6 +10,7 @@ from collections import deque, namedtuple
 from torch.utils.tensorboard import SummaryWriter
 from src.scripts.train import initialize_environment, SmoothedValue
 from src.experimental.order_lanes import get_own_state
+from log_config import logger
 import wandb
 import traci
 
@@ -24,7 +25,7 @@ NUM_QUEUES_IN_STATE = 4
 SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
-MAX_SIM_TIME = 2400
+MAX_SIM_TIME = 36000
 
 
 class TrafficGNN(nn.Module):
@@ -58,7 +59,11 @@ class ReplayBuffer:
 
 
 def get_junction_state(
-    junction_id, structured_junction_lane_map, max_lanes_per_direction, current_sim_time, device
+    junction_id,
+    structured_junction_lane_map,
+    max_lanes_per_direction,
+    current_sim_time,
+    device,
 ):
     state = get_own_state(
         junction_id,
@@ -77,7 +82,7 @@ def get_graph_from_env(
     structured_junction_lane_map,
     max_lanes_per_direction,
     current_sim_time,
-    device
+    device,
 ):
     """Constructs graph from the environment."""
     x = torch.stack(
@@ -87,7 +92,7 @@ def get_graph_from_env(
                 structured_junction_lane_map=structured_junction_lane_map,
                 max_lanes_per_direction=max_lanes_per_direction,
                 current_sim_time=current_sim_time,
-                device=device
+                device=device,
             )
             for i in tl_junctions
         ]
@@ -98,15 +103,15 @@ def get_graph_from_env(
             [1, 0, 2, 1, 4, 3, 5, 4, 7, 6, 8, 7, 3, 0, 4, 1, 5, 2, 6, 3, 7, 4, 8, 5],
         ],
         dtype=torch.long,
-        device=device
+        device=device,
     )
     return Data(x=x, edge_index=edge_index)
 
 
-def get_reward(prev_state, next_state, penalty:float=0.0):
+def get_reward(prev_state, next_state, penalty: float = 0.0):
     prev_qs = prev_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)  # total queue per node
     next_qs = next_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)
-    reward = (prev_qs - next_qs).sum().item()  - next_qs.sum().item() * penalty
+    reward = (prev_qs - next_qs).sum().item() - next_qs.sum().item() * penalty
     return reward
 
 
@@ -197,7 +202,7 @@ def main():
     junction_to_index = {j: i for i, j in enumerate(tl_junctions)}
 
     for episode in range(EPISODES):
-        traci.load(["-c", SUMO_CFG_PATH, '--log', 'sumo_logs.log'])
+        traci.load(["-c", SUMO_CFG_PATH, "--log", "sumo_logs.log"])
         current_time = traci.simulation.getTime()
 
         # Initialize global state as a graph
@@ -206,7 +211,7 @@ def main():
             structured_junction_lane_map=ordered_junction_lane_map,
             max_lanes_per_direction=3,
             current_sim_time=current_time,
-            device=device
+            device=device,
         )
         global_state.x = global_state.x.to(device)
         global_state.edge_index = global_state.edge_index.to(device)
@@ -224,13 +229,15 @@ def main():
             actions = {}
             for junction_id in tl_junctions:
                 idx = junction_to_index[junction_id]
-                action, epsilon = select_actions(q_values[idx].unsqueeze(0), epsilon, step_count)
+                action, epsilon = select_actions(
+                    q_values[idx].unsqueeze(0), epsilon, step_count
+                )
                 actions[junction_id] = action.item()
 
             actions_tensor = torch.tensor(
                 [actions[j] for j in tl_junctions], dtype=torch.long, device=device
             )
-            action_counts = torch.bincount(actions_tensor, minlength=len(4))
+            action_counts = torch.bincount(actions_tensor, minlength=4)
 
             # Apply actions and step simulation
             for junction_id, action in actions.items():
@@ -244,13 +251,17 @@ def main():
                     or current_time >= MAX_SIM_TIME
                 )
 
+            if done:
+                logger.warning(
+                    f"Ended episode at step:{step_count}, vehicles:{traci.simulation.getMinExpectedNumber()}, time:{current_time}"
+                )
             # Update state and calculate rewards
             next_global_state = get_graph_from_env(
                 tl_junctions=tl_junctions,
                 structured_junction_lane_map=ordered_junction_lane_map,
                 max_lanes_per_direction=3,
                 current_sim_time=current_time,
-                device=device
+                device=device,
             )
             reward = get_reward(global_state, next_global_state)
             total_reward += reward
@@ -280,8 +291,10 @@ def main():
                         "q_mean": q_preds.mean().item(),
                         "q_max": q_preds.max().item(),
                         "smoothed_reward": smooth_reward.get_value(),
-                        "action_distribution": wandb.Histogram(action_counts.cpu().numpy()),
-                        "epsilon":epsilon
+                        "action_distribution": wandb.Histogram(
+                            action_counts.cpu().numpy()
+                        ),
+                        "epsilon": epsilon,
                         # TODO: check if model really explores, because loss goes down rapidly
                         # TODO: implement early stopping if reward stagnates or loss doesn't improve
                         # TODO: analyze replay buffer for reward distribution and state diversity
