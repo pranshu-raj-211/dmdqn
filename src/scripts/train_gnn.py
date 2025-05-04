@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from src.scripts.train import initialize_environment, SmoothedValue
 from src.experimental.order_lanes import get_own_state
 import wandb
+import traci
 
 
 EPISODES = 10
@@ -20,6 +21,10 @@ SEED_VALUE = 1074
 NUM_NODES = 9
 NODE_FEATURES_SIZE = 9
 NUM_QUEUES_IN_STATE = 4
+SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg"
+SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
+ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
+MAX_SIM_TIME = 2400
 
 
 class TrafficGNN(nn.Module):
@@ -72,7 +77,7 @@ def get_reward(prev_state, next_state):
     next_qs = next_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)
     reward = (prev_qs - next_qs).sum().item()  # encourage reducing queue
     if (prev_qs == next_qs).all():
-        reward += -40  # Small penalty for stagnation
+        reward += -40  # penalty for stagnation
     return reward
 
 
@@ -134,53 +139,107 @@ def main():
         "state_version": 3,
         "step_duration": STEP_DURATION,
     },
-    settings=wandb.Settings(init_timeout=30, mode="online"),
+    settings=wandb.Settings(init_timeout=30, mode="offline"),
     )
     writer = SummaryWriter("runs/traffic_rl")
     smooth_reward = SmoothedValue(alpha=0.2)
-
 
     model = TrafficGNN(in_channels=9, hidden_channels=64, out_channels=4)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     buffer = ReplayBuffer()
     epsilon = 1.0
 
+    tl_junctions, ordered_junction_lane_map = initialize_environment()
+    tl_junctions.sort()
+
     for episode in range(EPISODES):
-        state = get_graph_from_env()
-        q_values = model(state.x, state.edge_index)
-        actions, epsilon = select_actions(q_values, epsilon)
-        next_state = get_graph_from_env()
-        reward = get_reward(state, next_state)
+        traci.load(["-c", SUMO_CFG_PATH])
+        global_state = {}
+        current_time = traci.simulation.getTime()
 
-        buffer.push(state, actions, reward, next_state)
+        # Initialize global state
+        for junction in tl_junctions:
+            global_state[junction] = get_own_state(
+                junction_id=junction,
+                structured_junction_lane_map=ordered_junction_lane_map,
+                max_lanes_per_direction=3,
+                current_sim_time=current_time,
+            )
 
-        if len(buffer) >= BATCH_SIZE:
-            batch = buffer.sample(BATCH_SIZE)
-            total_loss = 0
-            for transition in batch:
-                loss, q_preds = train_step(model, optimizer, transition)
-                total_loss += loss
+        done = False
+        total_reward = 0
+        step_count = 0
 
-            avg_loss = total_loss / len(batch)
+        while not done:
+            actions = {}
 
-            wandb.log({
-                "reward": reward,
-                "loss": avg_loss,
-                "q_mean": q_preds.mean().item(),
-                "q_max": q_preds.max().item(),
-                "smoothed_reward": smooth_reward,
-                "actions_hist": wandb.Histogram(actions)
-            })
-            writer.add_scalar("Reward", reward, episode)
-            writer.add_scalar("Loss", avg_loss, episode)
-            writer.add_histogram("Q Values", q_preds, episode)
-            writer.add_histogram("Actions", actions, episode)
+            # Get actions for each junction
+            for junction_id in tl_junctions:
+                state = get_junction_state(junction_id)
+                state_tensor = torch.tensor(state, dtype=torch.float32)
+                q_values = model(state_tensor.unsqueeze(0), torch.tensor([]))
+                action, epsilon = select_actions(q_values, epsilon, step_count)
+                actions[junction_id] = action.item()
 
-    torch.save(model.state_dict(), "traffic_gnn_rl.pt")
-    writer.close()
+            # Apply actions and step simulation
+            for junction_id, action in actions.items():
+                traci.trafficlight.setPhase(junction_id, ACTION_MAP[action])
+
+            target_time = current_time + STEP_DURATION
+            while current_time < target_time:
+                traci.simulationStep()
+                current_time = traci.simulation.getTime()
+                done = (
+                    traci.simulation.getMinExpectedNumber() == 0
+                    or current_time >= MAX_SIM_TIME
+                )
+
+            # Update state and calculate rewards
+            next_global_state = {}
+            rewards = {}
+            for junction in tl_junctions:
+                next_global_state[junction] = get_own_state(
+                    junction_id=junction,
+                    structured_junction_lane_map=ordered_junction_lane_map,
+                    max_lanes_per_direction=3,
+                    current_sim_time=current_time,
+                )
+                rewards[junction] = get_reward(global_state[junction], next_global_state[junction])
+
+            # Store experiences in replay buffer
+            for junction_id in tl_junctions:
+                buffer.push(
+                    global_state[junction_id],
+                    actions[junction_id],
+                    rewards[junction_id],
+                    next_global_state[junction_id]
+                )
+
+            # Train model if buffer has enough samples
+            if len(buffer) >= BATCH_SIZE:
+                batch = buffer.sample(BATCH_SIZE)
+                total_loss = 0
+                for transition in batch:
+                    loss, q_preds = train_step(model, optimizer, transition)
+                    total_loss += loss
+
+                avg_loss = total_loss / len(batch)
+
+                wandb.log({
+                    "reward": total_reward,
+                    "loss": avg_loss,
+                    "q_mean": q_preds.mean().item(),
+                    "q_max": q_preds.max().item(),
+                    "smoothed_reward": smooth_reward,
+                })
+
+            global_state = next_global_state
+            step_count += 1
+
+        torch.save(model.state_dict(), f"traffic_gnn_rl{episode}.pt")
+        writer.close()
 
 if __name__ == "__main__":
     random.seed(SEED_VALUE)
-    torch.seed(SEED_VALUE)
-    initialize_environment()
+    torch.manual_seed(SEED_VALUE)
     main()
