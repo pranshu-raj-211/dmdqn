@@ -15,15 +15,15 @@ from log_config import logger
 
 AGENT_CONFIG_PATH = ""
 ENV_CONFIG_PATH = ""
-SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.sumocfg"
+SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 baseline = None
 
-EPISODES = 1
+EPISODES = 10
 MAX_LANES_PER_DIRECTION = 3
-STEP_DURATION = 20.0
+STEP_DURATION = 10.0
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
-MAX_SIM_TIME = 3600
+MAX_SIM_TIME = 36000
 
 
 def set_seeds(seed_value):
@@ -118,6 +118,25 @@ def calculate_rewards(
     return alpha * local_reward + beta * global_reward
 
 
+
+def get_avg_waiting_time_per_junction(junction_lane_mapping: dict) -> dict:
+    avg_waits = {}
+    for junction_id, edge_lanes in junction_lane_mapping.items():
+        total_wait = 0
+        lane_count = 0
+        for lane_group in edge_lanes:
+            for lane_id in lane_group:
+                try:
+                    total_wait += traci.lane.getWaitingTime(lane_id)
+                    lane_count += 1
+                except traci.TraCIException:
+                    logger.exception("Messed up making wait time rewards.")
+
+        avg_wait = total_wait / lane_count if lane_count > 0 else 0
+        avg_waits[junction_id] = -1.0 * avg_wait
+    return avg_waits
+
+
 def random_baseline():
     """Randomly selects actions for traffic lights and runs the simulation."""
     set_seeds(42)
@@ -162,6 +181,15 @@ def random_baseline():
             rewards = dict()
             global_reward = calculate_global_reward(global_state, next_global_state)
             smooth_global_reward.update(global_reward)
+
+            junction_avg_waits = get_avg_waiting_time_per_junction(
+                ordered_junction_lane_map
+            )
+            avg_all = sum(junction_avg_waits.values()) / len(junction_avg_waits)
+            wandb.log(
+                {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
+            )
+            wandb.log({"avg_wait_time/overall": avg_all})
             
             for junction in tl_junctions:
                 global_state[junction] = get_own_state(
@@ -253,6 +281,15 @@ def greedy_baseline():
             rewards = dict()
             global_reward = calculate_global_reward(global_state, next_global_state)
             smooth_global_reward.update(global_reward)
+
+            junction_avg_waits = get_avg_waiting_time_per_junction(
+                ordered_junction_lane_map
+            )
+            avg_all = sum(junction_avg_waits.values()) / len(junction_avg_waits)
+            wandb.log(
+                {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
+            )
+            wandb.log({"avg_wait_time/overall": avg_all})
             
             for junction in tl_junctions:
                 global_state[junction] = get_own_state(
@@ -320,6 +357,15 @@ def timed_baseline():
             rewards = dict()
             global_reward = calculate_global_reward(global_state, next_global_state)
             smooth_global_reward.update(global_reward)
+
+            junction_avg_waits = get_avg_waiting_time_per_junction(
+                ordered_junction_lane_map
+            )
+            avg_all = sum(junction_avg_waits.values()) / len(junction_avg_waits)
+            wandb.log(
+                {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
+            )
+            wandb.log({"avg_wait_time/overall": avg_all})
             
             for junction in tl_junctions:
                 global_state[junction] = get_own_state(
@@ -357,6 +403,6 @@ smooth_total_reward = SmoothedValue(alpha=0.3)
 
 
 if __name__ == "__main__":
-    # random_baseline()
+    random_baseline()
     # timed_baseline()
-    greedy_baseline()
+    # greedy_baseline()
