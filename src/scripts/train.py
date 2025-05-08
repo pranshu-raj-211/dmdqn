@@ -208,7 +208,7 @@ def get_avg_waiting_time_per_junction(junction_lane_mapping: dict) -> dict:
     return avg_waits
 
 
-def train_agents():
+def train_agents(run):
     tl_junctions, ordered_junction_lane_map = initialize_environment()
     agents = create_agents(tl_junctions)
 
