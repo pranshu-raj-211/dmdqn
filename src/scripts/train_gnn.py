@@ -26,6 +26,7 @@ SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
 MAX_SIM_TIME = 36000
+MAX_STEPS = 3600
 REWARD_MEAN=-100
 REWARD_STD=40
 
@@ -224,6 +225,7 @@ def main():
     for episode in range(EPISODES):
         traci.load(["-c", SUMO_CFG_PATH, "--log", "sumo_logs.log"])
         current_time = traci.simulation.getTime()
+        wandb.log({'episode':episode})
 
         # Initialize global state as a graph
         global_state = get_graph_from_env(
@@ -269,6 +271,7 @@ def main():
                 done = (
                     traci.simulation.getMinExpectedNumber() == 0
                     or current_time >= MAX_SIM_TIME
+                    or step_count>=MAX_STEPS
                 )
 
             if done:

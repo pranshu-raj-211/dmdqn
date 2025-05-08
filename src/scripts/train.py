@@ -61,6 +61,7 @@ MAX_SIM_TIME = 36_000
 INPUT_SIZE = 49
 QUEUES_EDGE_SIZE = 4
 ACTION_SIZE = 4
+MAX_STEPS = 3600
 
 
 tf.keras.mixed_precision.set_global_policy("mixed_float16")
@@ -262,6 +263,7 @@ def train_agents(run):
                 done = (
                     traci.simulation.getMinExpectedNumber() == 0
                     or current_time >= MAX_SIM_TIME
+                    or step_count >= MAX_STEPS
                 )
 
             # Update global state and calculate rewards
