@@ -27,8 +27,8 @@ SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
 MAX_SIM_TIME = 36000
 MAX_STEPS = 3600
-REWARD_MEAN=-100
-REWARD_STD=40
+REWARD_MEAN = -100
+REWARD_STD = 40
 
 
 class TrafficGNN(nn.Module):
@@ -115,7 +115,7 @@ def get_reward(prev_state, next_state, penalty: float = 0.0):
     prev_qs = prev_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)  # total queue per node
     next_qs = next_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)
     reward = (prev_qs - next_qs).sum().item() - next_qs.sum().item() * penalty
-    return (reward - REWARD_MEAN)/REWARD_STD
+    return (reward - REWARD_MEAN) / REWARD_STD
 
 
 def get_avg_waiting_time_per_junction(junction_lane_mapping: dict) -> dict:
@@ -225,7 +225,7 @@ def main():
     for episode in range(EPISODES):
         traci.load(["-c", SUMO_CFG_PATH, "--log", "sumo_logs.log"])
         current_time = traci.simulation.getTime()
-        wandb.log({'episode':episode})
+        wandb.log({"episode": episode})
 
         # Initialize global state as a graph
         global_state = get_graph_from_env(
@@ -271,7 +271,7 @@ def main():
                 done = (
                     traci.simulation.getMinExpectedNumber() == 0
                     or current_time >= MAX_SIM_TIME
-                    or step_count>=MAX_STEPS
+                    or step_count >= MAX_STEPS
                 )
 
             if done:

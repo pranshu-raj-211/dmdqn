@@ -217,6 +217,7 @@ def train_agents(run):
 
     for episode in range(EPISODES):
         logger.debug(f"Episode {episode + 1}/{EPISODES}")
+        run.log({'episode_current':episode})
         traci.load(["-c", SUMO_CFG_PATH])
         global_state = dict()
         current_time = traci.simulation.getTime()
