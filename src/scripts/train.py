@@ -50,8 +50,8 @@ ENV_CONFIG_PATH = ""
 SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 baseline = None
-reward_mean = 150
-reward_std = 20
+reward_mean = -150
+reward_std = 60
 
 EPISODES = 10
 MAX_LANES_PER_DIRECTION = 3
