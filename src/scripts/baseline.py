@@ -24,6 +24,7 @@ MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 10.0
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
 MAX_SIM_TIME = 36000
+MAX_STEPS = 3600
 
 
 def set_seeds(seed_value):
@@ -175,6 +176,7 @@ def random_baseline():
                 done = (
                     traci.simulation.getMinExpectedNumber() == 0
                     or current_time >= MAX_SIM_TIME
+                    or step_count>=MAX_STEPS
                 )
 
             next_global_state = dict()
