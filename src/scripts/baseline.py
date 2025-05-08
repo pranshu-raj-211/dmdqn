@@ -412,6 +412,6 @@ smooth_total_reward = SmoothedValue(alpha=0.3)
 
 
 if __name__ == "__main__":
-    random_baseline()
-    # timed_baseline()
+    # random_baseline()
+    timed_baseline()
     # greedy_baseline()

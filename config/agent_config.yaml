@@ -1,7 +1,7 @@
-learning_rate: 0.0005 
+learning_rate: 0.0001
 gamma: 0.99
 epsilon_start: 1.0        # Initial exploration rate
-epsilon_min: 0.05         # Minimum exploration rate
+epsilon_min: 0.01         # Minimum exploration rate
 epsilon_decay_steps: 200000 # Number of steps over which epsilon decays linearly
 replay_buffer_size: 30000   # Maximum size of the replay buffer
 batch_size: 128            # Mini-batch size for training
