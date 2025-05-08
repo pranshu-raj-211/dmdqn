@@ -115,7 +115,7 @@ def get_reward(prev_state, next_state, penalty: float = 0.0):
     return reward
 
 
-def get_avg_waiting_time_per_junction(junction_lane_mapping:dict) -> dict:
+def get_avg_waiting_time_per_junction(junction_lane_mapping: dict) -> dict:
     avg_waits = {}
     for junction_id, edge_lanes in junction_lane_mapping.items():
         total_wait = 0
@@ -281,9 +281,13 @@ def main():
                 current_sim_time=current_time,
                 device=device,
             )
-            junction_avg_waits = get_avg_waiting_time_per_junction(ordered_junction_lane_map)
+            junction_avg_waits = get_avg_waiting_time_per_junction(
+                ordered_junction_lane_map
+            )
             avg_all = sum(junction_avg_waits.values()) / len(junction_avg_waits)
-            wandb.log({f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()})
+            wandb.log(
+                {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
+            )
             wandb.log({"avg_wait_time/overall": avg_all})
 
             reward = avg_all
@@ -308,17 +312,15 @@ def main():
 
                 wandb.log(
                     {
-                        "step":step_count,
-                        "time":current_time,
+                        "step": step_count,
+                        "time": current_time,
                         "reward": total_reward,
                         "penalized_reward": total_penalized_reward,
                         "loss": avg_loss,
                         "q_mean": q_preds.mean().item(),
                         "q_max": q_preds.max().item(),
                         "smoothed_reward": smooth_reward.get_value(),
-                        "action_distribution": wandb.Histogram(
-                            action_counts.tolist()
-                        ),
+                        "action_distribution": wandb.Histogram(action_counts.tolist()),
                         "epsilon": epsilon,
                         # TODO: check if model really explores, because loss goes down rapidly
                         # TODO: implement early stopping if reward stagnates or loss doesn't improve

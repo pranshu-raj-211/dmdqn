@@ -60,7 +60,7 @@ ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
 MAX_SIM_TIME = 10_000
 INPUT_SIZE = 49
 QUEUES_EDGE_SIZE = 4
-ACTION_SIZE=4
+ACTION_SIZE = 4
 
 
 tf.keras.mixed_precision.set_global_policy("mixed_float16")
@@ -127,7 +127,10 @@ def create_agents(tl_junctions):
 
     for junction_id in tl_junctions:
         agents[junction_id] = DQNAgent(
-            state_size=INPUT_SIZE, action_size=ACTION_SIZE, agent_id=junction_id, config=agent_config
+            state_size=INPUT_SIZE,
+            action_size=ACTION_SIZE,
+            agent_id=junction_id,
+            config=agent_config,
         )
     return agents
 
@@ -185,6 +188,24 @@ def calculate_rewards(
     )
     global_reward = calculate_global_reward(global_state, next_global_state)
     return alpha * local_reward + beta * global_reward
+
+
+def get_avg_waiting_time_per_junction(junction_lane_mapping: dict) -> dict:
+    avg_waits = {}
+    for junction_id, edge_lanes in junction_lane_mapping.items():
+        total_wait = 0
+        lane_count = 0
+        for lane_group in edge_lanes:
+            for lane_id in lane_group:
+                try:
+                    total_wait += traci.lane.getWaitingTime(lane_id)
+                    lane_count += 1
+                except traci.TraCIException:
+                    logger.exception("Messed up making wait time rewards.")
+
+        avg_wait = total_wait / lane_count if lane_count > 0 else 0
+        avg_waits[junction_id] = -1.0 * avg_wait
+    return avg_waits
 
 
 def train_agents():
@@ -259,7 +280,19 @@ def train_agents():
                 local_reward = calculate_local_reward(
                     global_state[junction], next_global_state[junction]
                 )
-                rewards[junction] = (0.3 * local_reward + 0.7 * global_reward - reward_mean)/(reward_std)
+                rewards[junction] = (
+                    0.3 * local_reward + 0.7 * global_reward - reward_mean
+                ) / (reward_std)
+
+            junction_avg_waits = get_avg_waiting_time_per_junction(
+                ordered_junction_lane_map
+            )
+            avg_all = sum(junction_avg_waits.values()) / len(junction_avg_waits)
+            wandb.log(
+                {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
+            )
+            wandb.log({"avg_wait_time/overall": avg_all})
+
             total_reward = sum(rewards.values())
             smooth_total_reward.update(total_reward)
 
@@ -310,7 +343,9 @@ def train_agents():
             step_count += 1
 
         # run.log({"episode": episode + 1, "total_reward": total_reward})
-        logger.info(f"Episode {episode + 1} complete. Total Reward: {total_reward}, loss: {total_loss}")
+        logger.info(
+            f"Episode {episode + 1} complete. Total Reward: {total_reward}, loss: {total_loss}"
+        )
 
     traci.close()
     run.finish()
