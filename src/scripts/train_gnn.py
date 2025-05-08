@@ -115,7 +115,11 @@ def get_reward(prev_state, next_state, penalty: float = 0.0):
     prev_qs = prev_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)  # total queue per node
     next_qs = next_state.x[:, :NUM_QUEUES_IN_STATE].sum(dim=1)
     reward = (prev_qs - next_qs).sum().item() - next_qs.sum().item() * penalty
-    return (reward - REWARD_MEAN) / REWARD_STD
+    normalized_reward = (reward - REWARD_MEAN) / REWARD_STD
+    clipped_reward = torch.clamp(
+        torch.tensor(normalized_reward), min=-60, max=15
+    ).item()
+    return clipped_reward
 
 
 def get_avg_waiting_time_per_junction(junction_lane_mapping: dict) -> dict:

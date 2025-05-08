@@ -96,7 +96,7 @@ class SmoothedValue:
 
 
 def calculate_local_reward(current_state, next_state):
-    logger.info(f'reward calc: {current_state[:12]}')
+    logger.info(f"reward calc: {current_state[:12]}")
     return -1.0 * sum(current_state[:12])
 
 
@@ -117,7 +117,6 @@ def calculate_rewards(
     )
     global_reward = calculate_global_reward(global_state, next_global_state)
     return alpha * local_reward + beta * global_reward
-
 
 
 def get_avg_waiting_time_per_junction(junction_lane_mapping: dict) -> dict:
@@ -145,7 +144,9 @@ def random_baseline():
 
     for episode in range(EPISODES):
         global_state = dict()
+        traci.load(["-c", SUMO_CFG_PATH])
         current_time = traci.simulation.getTime()
+        run.log({"episode": episode})
 
         for junction in tl_junctions:
             global_state[junction] = get_own_state(
@@ -154,7 +155,7 @@ def random_baseline():
                 max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
                 current_sim_time=current_time,
             )
-            logger.info(f'state for {junction}: {global_state[junction]}')
+            logger.info(f"state for {junction}: {global_state[junction]}")
 
         done = False
         step_count = 0
@@ -176,7 +177,7 @@ def random_baseline():
                 done = (
                     traci.simulation.getMinExpectedNumber() == 0
                     or current_time >= MAX_SIM_TIME
-                    or step_count>=MAX_STEPS
+                    or step_count >= MAX_STEPS
                 )
 
             next_global_state = dict()
@@ -192,7 +193,7 @@ def random_baseline():
                 {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
             )
             wandb.log({"avg_wait_time/overall": avg_all})
-            
+
             for junction in tl_junctions:
                 global_state[junction] = get_own_state(
                     junction_id=junction,
@@ -200,11 +201,9 @@ def random_baseline():
                     max_lanes_per_direction=MAX_LANES_PER_DIRECTION,
                     current_sim_time=current_time,
                 )
-                logger.info(f'state for {junction}: {global_state[junction]}')
+                logger.info(f"state for {junction}: {global_state[junction]}")
 
-                local_reward = calculate_local_reward(
-                    global_state[junction], []
-                )
+                local_reward = calculate_local_reward(global_state[junction], [])
                 rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
             total_reward = sum(rewards.values())
             # logger.warning(f'step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}')
@@ -244,6 +243,8 @@ def greedy_baseline():
     for episode in range(EPISODES):
         current_time = traci.simulation.getTime()
         done = False
+        traci.load(["-c", SUMO_CFG_PATH])
+        run.log({'episode':episode})
         step_count = 0
         global_state = dict()
 
@@ -278,6 +279,7 @@ def greedy_baseline():
                 done = (
                     traci.simulation.getMinExpectedNumber() == 0
                     or current_time >= MAX_SIM_TIME
+                    or step_count >= MAX_STEPS
                 )
             next_global_state = dict()
             rewards = dict()
@@ -292,7 +294,7 @@ def greedy_baseline():
                 {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
             )
             wandb.log({"avg_wait_time/overall": avg_all})
-            
+
             for junction in tl_junctions:
                 global_state[junction] = get_own_state(
                     junction_id=junction,
@@ -302,12 +304,12 @@ def greedy_baseline():
                 )
                 # logger.info(f'state for {junction}: {global_state[junction]}')
 
-                local_reward = calculate_local_reward(
-                    global_state[junction], []
-                )
+                local_reward = calculate_local_reward(global_state[junction], [])
                 rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
             total_reward = sum(rewards.values())
-            logger.warning(f'step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}')
+            logger.warning(
+                f"step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}"
+            )
             smooth_total_reward.update(total_reward)
             smooth_global_reward.update(global_reward)
             run.log(
@@ -320,7 +322,9 @@ def greedy_baseline():
                 }
             )
             step_count += 1
-        logger.warning(f'Episode ended, n_vehicles : {traci.simulation.getMinExpectedNumber()}, time : {current_time}')
+        logger.warning(
+            f"Episode ended, n_vehicles : {traci.simulation.getMinExpectedNumber()}, time : {current_time}"
+        )
     traci.close()
     logger.info("Greedy baseline simulation completed.")
 
@@ -334,6 +338,8 @@ def timed_baseline():
     for episode in range(EPISODES):
         current_time = traci.simulation.getTime()
         done = False
+        traci.load(["-c", SUMO_CFG_PATH])
+        run.log({'episode':episode})
         step_count = 0
 
         for junction in tl_junctions:
@@ -368,7 +374,7 @@ def timed_baseline():
                 {f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()}
             )
             wandb.log({"avg_wait_time/overall": avg_all})
-            
+
             for junction in tl_junctions:
                 global_state[junction] = get_own_state(
                     junction_id=junction,
@@ -378,12 +384,12 @@ def timed_baseline():
                 )
                 # logger.info(f'state for {junction}: {global_state[junction]}')
 
-                local_reward = calculate_local_reward(
-                    global_state[junction], []
-                )
+                local_reward = calculate_local_reward(global_state[junction], [])
                 rewards[junction] = 0.3 * local_reward + 0.7 * global_reward
             total_reward = sum(rewards.values())
-            logger.warning(f'step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}')
+            logger.warning(
+                f"step: {step_count}, global reward: {global_reward}, total_reward: {total_reward}"
+            )
             smooth_total_reward.update(total_reward)
             smooth_global_reward.update(global_reward)
             run.log(
@@ -399,6 +405,7 @@ def timed_baseline():
 
     traci.close()
     logger.info("Timed baseline simulation completed.")
+
 
 smooth_global_reward = SmoothedValue(alpha=0.3)
 smooth_total_reward = SmoothedValue(alpha=0.3)
