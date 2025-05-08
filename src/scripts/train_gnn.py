@@ -115,6 +115,24 @@ def get_reward(prev_state, next_state, penalty: float = 0.0):
     return reward
 
 
+def get_avg_waiting_time_per_junction(junction_lane_mapping:dict) -> dict:
+    avg_waits = {}
+    for junction_id, edge_lanes in junction_lane_mapping.items():
+        total_wait = 0
+        lane_count = 0
+        for lane_group in edge_lanes:
+            for lane_id in lane_group:
+                try:
+                    total_wait += traci.lane.getWaitingTime(lane_id)
+                    lane_count += 1
+                except traci.TraCIException:
+                    logger.exception("Messed up making wait time rewards.")
+
+        avg_wait = total_wait / lane_count if lane_count > 0 else 0
+        avg_waits[junction_id] = -1.0 * avg_wait
+    return avg_waits
+
+
 def select_actions(
     q_values,
     epsilon,
@@ -263,7 +281,12 @@ def main():
                 current_sim_time=current_time,
                 device=device,
             )
-            reward = get_reward(global_state, next_global_state)
+            junction_avg_waits = get_avg_waiting_time_per_junction(ordered_junction_lane_map)
+            avg_all = sum(junction_avg_waits.values()) / len(junction_avg_waits)
+            wandb.log({f"avg_wait_time/{junc}": wt for junc, wt in junction_avg_waits.items()})
+            wandb.log({"avg_wait_time/overall": avg_all})
+
+            reward = avg_all
             total_reward += reward
             smooth_reward.update(total_reward)
             penalized_reward = get_reward(global_state, next_global_state, penalty=0.1)
