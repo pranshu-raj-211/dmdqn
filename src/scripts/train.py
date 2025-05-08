@@ -50,14 +50,14 @@ ENV_CONFIG_PATH = ""
 SUMO_CFG_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_10h.sumocfg"
 SUMO_NET_PATH = "src/sumo_files/scenarios/grid_3x3_lefthand/grid_3x3_lht.net.xml"
 baseline = None
-reward_mean = -150
-reward_std = 60
+reward_mean = -100
+reward_std = 40
 
 EPISODES = 10
 MAX_LANES_PER_DIRECTION = 3
 STEP_DURATION = 10.0
 ACTION_MAP = {0: 0, 1: 1, 2: 2, 3: 3}
-MAX_SIM_TIME = 10_000
+MAX_SIM_TIME = 36_000
 INPUT_SIZE = 49
 QUEUES_EDGE_SIZE = 4
 ACTION_SIZE = 4
@@ -268,6 +268,8 @@ def train_agents(run):
             next_global_state = dict()
             rewards = dict()
             global_reward = calculate_global_reward(global_state, next_global_state)
+            global_reward = (global_reward - reward_mean)/reward_std
+            global_reward = np.clip(global_reward, 10, -50)
             smooth_global_reward.update(global_reward)
             # get next state, rewards
             for junction in tl_junctions:
